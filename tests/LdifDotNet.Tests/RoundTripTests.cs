@@ -29,6 +29,20 @@ public class RoundTripTests
             AssertRecordsEqual(original[i], reparsed[i]);
     }
 
+    // Regression for quadratic unfolding: a 2 MB value folds into ~28k physical
+    // lines; per-continuation string concatenation would copy ~28 GB here.
+    [Fact]
+    public void Large_folded_value_round_trips()
+    {
+        string large = new('a', 2_000_000);
+        var record = new LdifContentRecord("dc=x", new LdifAttribute("description", large));
+
+        string written = LdifWriter.WriteToString([record]);
+        var reparsed = Assert.IsType<LdifContentRecord>(Assert.Single(LdifReader.Parse(written)));
+
+        Assert.Equal(large, reparsed["description"]!.Values[0].AsString());
+    }
+
     [Fact]
     public void Fixture_discovery_finds_both_corpora()
     {
