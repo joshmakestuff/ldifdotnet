@@ -1,3 +1,5 @@
+#pragma warning disable MA0048 // Deliberate: the gating attribute is colocated with the tests it gates
+
 using System.Diagnostics;
 using LdifDotNet.Generator;
 using LdifDotNet.Schema;
@@ -165,6 +167,7 @@ public class DifferentialTests
     {
         var startInfo = new ProcessStartInfo(fileName)
         {
+            UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };

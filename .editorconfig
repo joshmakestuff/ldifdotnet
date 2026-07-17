@@ -35,6 +35,14 @@ dotnet_style_qualification_for_property = false:warning
 dotnet_style_qualification_for_method = false:warning
 dotnet_style_qualification_for_event = false:warning
 
+# --- Meziantou.Analyzer tuning -----------------------------------------------
+# MA0048 (one type per file) stays ON; files that deliberately group a type
+# family opt out with an explicit #pragma at the top of the file.
+# MA0006: == on strings is idiomatic C#; the language guarantees ordinal.
+dotnet_diagnostic.MA0006.severity = none
+# MA0051: method length is a judgment call, not a build gate.
+dotnet_diagnostic.MA0051.severity = none
+
 # --- Deliberate exceptions to AnalysisLevel latest-all -----------------------
 # CA1032: parse exceptions deliberately require message + line number; the
 # standard parameterless/message-only constructors would create broken instances.

@@ -43,7 +43,11 @@ current LTS only (net10.0, C# 14); the PowerShell module requires pwsh 7.6+
 - Banned APIs (RS0030, BannedSymbols.txt): no clocks (DateTime.Now etc.), no
   unseeded randomness, no process-CWD reliance. These back the generator
   determinism and explicit-path invariants; extend the list rather than
-  suppressing RS0030. Never assume path separators or OS file locations in
+  suppressing RS0030.
+- Meziantou.Analyzer runs as errors. MA0048 (one type per file) is the default;
+  a file that deliberately groups a type family opts out with a justified
+  `#pragma warning disable MA0048` at the top. MA0006/MA0051 are off by policy
+  (see .editorconfig); MA0074 is off for tests only. Never assume path separators or OS file locations in
   product code; build paths with Path.Combine. The differential tests' unix
   defaults (`/etc/ldap/schema` etc.) are the one deliberate exception — they are
   Linux-gated and env-overridable. Unix-looking strings in generator output

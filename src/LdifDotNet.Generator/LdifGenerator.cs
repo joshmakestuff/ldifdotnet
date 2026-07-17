@@ -129,7 +129,7 @@ public sealed class LdifGenerator
         string firstRdn = comma < 0 ? baseDn : baseDn[..comma];
         int equals = firstRdn.IndexOf('=', StringComparison.Ordinal);
         if (equals <= 0)
-            throw new ArgumentException($"Base DN '{baseDn}' does not start with a valid RDN.");
+            throw new InvalidOperationException($"Base DN '{baseDn}' does not start with a valid RDN.");
         string attribute = firstRdn[..equals].Trim();
         string value = firstRdn[(equals + 1)..].Trim();
 
@@ -148,7 +148,7 @@ public sealed class LdifGenerator
                 baseDn,
                 new LdifAttribute("objectClass", "top", "organizationalUnit"),
                 new LdifAttribute("ou", value)),
-            _ => throw new ArgumentException($"Base DN must start with dc=, o= or ou=; got '{attribute}='."),
+            _ => throw new InvalidOperationException($"Base DN must start with dc=, o= or ou=; got '{attribute}='."),
         };
     }
 

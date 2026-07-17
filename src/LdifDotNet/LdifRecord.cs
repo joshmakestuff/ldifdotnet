@@ -1,3 +1,5 @@
+#pragma warning disable MA0048 // Deliberate: base record and content record live together
+
 namespace LdifDotNet;
 
 /// <summary>Base type for all LDIF records (content records and change records).</summary>

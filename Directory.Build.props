@@ -16,6 +16,8 @@
     <!-- RS0030: bans clock/CWD/unseeded-random APIs; see BannedSymbols.txt. -->
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" Link="BannedSymbols.txt" />
+    <!-- Correctness-focused third-party rules; tuning in .editorconfig. -->
+    <PackageReference Include="Meziantou.Analyzer" Version="3.0.123" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

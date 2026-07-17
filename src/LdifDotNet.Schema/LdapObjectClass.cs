@@ -1,3 +1,5 @@
+#pragma warning disable MA0048 // Deliberate: the Kind enum is colocated with its class
+
 namespace LdifDotNet.Schema;
 
 /// <summary>An object class definition (RFC 4512 §4.1.1).</summary>
