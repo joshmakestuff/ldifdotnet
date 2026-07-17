@@ -182,4 +182,102 @@ public class WriterTests
             "newsuperior: ou=Accounting, dc=airius, dc=com\n",
             LdifWriter.WriteToString([record]));
     }
+
+    [Fact]
+    public void Rejects_change_record_after_content_record()
+    {
+        using var writer = new LdifWriter(new StringWriter());
+        writer.WriteRecord(new LdifContentRecord("dc=a", new LdifAttribute("dc", "a")));
+
+        var ex = Assert.Throws<InvalidOperationException>(() => writer.WriteRecord(new LdifDeleteRecord("dc=b")));
+        Assert.Contains("never both", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_content_record_after_change_record()
+    {
+        using var writer = new LdifWriter(new StringWriter());
+        writer.WriteRecord(new LdifDeleteRecord("dc=a"));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            writer.WriteRecord(new LdifContentRecord("dc=b", new LdifAttribute("dc", "b"))));
+    }
+
+    [Fact]
+    public void Rejects_content_record_with_no_attributes()
+    {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            LdifWriter.WriteToString([new LdifContentRecord("dc=x")]));
+        Assert.Contains("at least one attribute", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_add_record_with_no_attributes()
+    {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            LdifWriter.WriteToString([new LdifAddRecord("dc=x")]));
+        Assert.Contains("at least one attribute", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("1cn")]            // descr must start with a letter
+    [InlineData("cn name")]        // space
+    [InlineData("sn_2")]           // underscore
+    [InlineData("cn;")]            // empty option
+    [InlineData(";binary")]        // empty attribute type
+    [InlineData("cn;lang=en")]     // '=' not an option char
+    [InlineData("2.5.4.")]         // trailing dot
+    [InlineData("2..5")]           // empty OID arc
+    public void Rejects_invalid_attribute_descriptions(string name)
+    {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            LdifWriter.WriteToString([new LdifContentRecord("dc=x", new LdifAttribute(name, "v"))]));
+        Assert.Contains("AttributeDescription", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("cn")]
+    [InlineData("userCertificate;binary")]
+    [InlineData("2.5.4.3")]
+    [InlineData("x-custom-attr")]
+    [InlineData("description;lang-en;binary")]
+    public void Accepts_valid_attribute_descriptions(string name)
+    {
+        string ldif = LdifWriter.WriteToString([new LdifContentRecord("dc=x", new LdifAttribute(name, "v"))]);
+        Assert.Contains($"{name}: v\n", ldif);
+    }
+
+    [Fact]
+    public void Rejects_modification_with_invalid_attribute_name()
+    {
+        var record = new LdifModifyRecord("dc=x", new LdifModification(LdifModificationType.Add, "bad name", "v"));
+
+        Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+    }
+
+    [Theory]
+    [InlineData("not-an-oid")]
+    [InlineData("1..2")]
+    [InlineData("")]
+    public void Rejects_invalid_control_oid(string oid)
+    {
+        var record = new LdifDeleteRecord("dc=x") { Controls = [new LdifControl(oid)] };
+
+        var ex = Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+        Assert.Contains("numeric OID", ex.Message);
+    }
+
+    [Fact]
+    public void Invalid_record_writes_nothing()
+    {
+        var output = new StringWriter();
+        using var writer = new LdifWriter(output);
+
+        Assert.Throws<ArgumentException>(() => writer.WriteRecord(new LdifContentRecord("dc=x")));
+        Assert.Equal("", output.ToString());
+
+        writer.WriteRecord(new LdifContentRecord("dc=x", new LdifAttribute("dc", "x")));
+        Assert.StartsWith("version: 1\n", output.ToString());
+    }
 }
