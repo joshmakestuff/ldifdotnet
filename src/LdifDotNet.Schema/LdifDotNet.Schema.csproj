@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Parser for LDAP schema definitions (RFC 4512, slapd.conf schema file format).</Description>
+  </PropertyGroup>
+
+</Project>
