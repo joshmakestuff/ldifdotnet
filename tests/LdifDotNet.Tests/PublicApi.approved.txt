@@ -55,12 +55,18 @@ namespace LdifDotNet
         Add = 0,
         Delete = 1,
         Replace = 2,
+        Increment = 3,
     }
     public sealed class LdifModifyRecord : LdifDotNet.LdifChangeRecord
     {
         public LdifModifyRecord(string dn, params LdifDotNet.LdifModification[] modifications) { }
         public LdifModifyRecord(string dn, System.Collections.Generic.IEnumerable<LdifDotNet.LdifModification> modifications) { }
         public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifModification> Modifications { get; }
+    }
+    public sealed class LdifParseException : System.Exception
+    {
+        public LdifParseException(string message, int lineNumber) { }
+        public int LineNumber { get; }
     }
     public sealed class LdifReader : System.IDisposable
     {
@@ -78,6 +84,8 @@ namespace LdifDotNet
     public readonly struct LdifValue : System.IEquatable<LdifDotNet.LdifValue>
     {
         public bool IsBinary { get; }
+        public bool IsUrl { get; }
+        public System.Uri? Url { get; }
         public byte[] AsBytes() { }
         public string AsString() { }
         public bool Equals(LdifDotNet.LdifValue other) { }
@@ -86,6 +94,7 @@ namespace LdifDotNet
         public override string ToString() { }
         public static LdifDotNet.LdifValue FromBytes(byte[] value) { }
         public static LdifDotNet.LdifValue FromString(string value) { }
+        public static LdifDotNet.LdifValue FromUrl(System.Uri url) { }
         public static LdifDotNet.LdifValue op_Implicit(string value) { }
     }
     public sealed class LdifWriter : System.IDisposable

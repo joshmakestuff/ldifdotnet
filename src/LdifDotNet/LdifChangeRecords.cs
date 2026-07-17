@@ -99,6 +99,9 @@ public enum LdifModificationType
     Add,
     Delete,
     Replace,
+
+    /// <summary>Modify-Increment extension (RFC 4525); supported by OpenLDAP.</summary>
+    Increment,
 }
 
 /// <summary>A change record with changetype: moddn or modrdn.</summary>
