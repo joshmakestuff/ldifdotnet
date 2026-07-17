@@ -24,8 +24,18 @@ public readonly struct LdifValue : IEquatable<LdifValue>
     public static LdifValue FromString(string value) =>
         new(value ?? throw new ArgumentNullException(nameof(value)), null, null);
 
-    public static LdifValue FromBytes(byte[] value) =>
-        new(null, value ?? throw new ArgumentNullException(nameof(value)), null);
+    /// <summary>Creates a binary value. The input array is copied, so later mutation
+    /// of <paramref name="value"/> cannot affect this value's bytes, equality, or hash.</summary>
+    public static LdifValue FromBytes(byte[] value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return new(null, [.. value], null);
+    }
+
+    /// <summary>Creates a binary value that takes ownership of <paramref name="value"/>
+    /// without copying. The caller must not retain or mutate the array; used by the
+    /// reader for freshly decoded base64 buffers.</summary>
+    internal static LdifValue FromOwnedBytes(byte[] value) => new(null, value, null);
 
     public static LdifValue FromUrl(Uri url) =>
         new(null, null, url ?? throw new ArgumentNullException(nameof(url)));
@@ -46,16 +56,19 @@ public readonly struct LdifValue : IEquatable<LdifValue>
         ? throw new InvalidOperationException("Value is a URL reference; its content is not loaded. Check IsUrl and use Url.")
         : _text ?? Encoding.UTF8.GetString(_bytes ?? []);
 
-    /// <summary>The value as raw bytes. Textual values are encoded as UTF-8.</summary>
+    /// <summary>The value as raw bytes. Textual values are encoded as UTF-8.
+    /// The returned array is a copy; mutating it cannot affect this value.</summary>
     public byte[] AsBytes() => IsUrl
         ? throw new InvalidOperationException("Value is a URL reference; its content is not loaded. Check IsUrl and use Url.")
-        : _bytes ?? Encoding.UTF8.GetBytes(_text ?? "");
+        : _bytes is not null ? [.. _bytes] : Encoding.UTF8.GetBytes(_text ?? "");
+
+    private byte[] Octets() => _bytes ?? Encoding.UTF8.GetBytes(_text ?? "");
 
     public bool Equals(LdifValue other)
     {
         if (IsUrl || other.IsUrl)
             return IsUrl && other.IsUrl && _url == other._url;
-        return AsBytes().AsSpan().SequenceEqual(other.AsBytes());
+        return Octets().AsSpan().SequenceEqual(other.Octets());
     }
 
     public override bool Equals(object? obj) => obj is LdifValue other && Equals(other);
@@ -69,7 +82,7 @@ public readonly struct LdifValue : IEquatable<LdifValue>
         if (IsUrl)
             return _url!.GetHashCode();
         var hash = new HashCode();
-        hash.AddBytes(AsBytes());
+        hash.AddBytes(Octets());
         return hash.ToHashCode();
     }
 
