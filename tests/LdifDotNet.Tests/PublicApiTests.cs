@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using PublicApiGenerator;
 
@@ -6,18 +7,25 @@ namespace LdifDotNet.Tests;
 public class PublicApiTests
 {
     /// <summary>
-    /// The approved file is the API contract. If this test fails, the public surface
-    /// changed: review the diff, then re-approve by running tests once with the
-    /// environment variable UPDATE_PUBLIC_API=1 and committing the updated file.
+    /// The approved files are the API contracts. If a test here fails, a public
+    /// surface changed: review the diff, then re-approve by running tests once with
+    /// the environment variable UPDATE_PUBLIC_API=1 and committing the updated file.
     /// </summary>
     [Fact]
-    public void Public_api_surface_matches_approved_contract()
+    public void Core_public_api_matches_approved_contract() =>
+        AssertApproved(typeof(LdifRecord).Assembly, "PublicApi.approved.txt");
+
+    [Fact]
+    public void Generator_public_api_matches_approved_contract() =>
+        AssertApproved(typeof(Generator.LdifGenerator).Assembly, "PublicApi.Generator.approved.txt");
+
+    private static void AssertApproved(Assembly assembly, string approvedFileName)
     {
-        string current = typeof(LdifRecord).Assembly
+        string current = assembly
             .GeneratePublicApi(new ApiGeneratorOptions { IncludeAssemblyAttributes = false })
             .ReplaceLineEndings("\n").Trim();
 
-        string approvedFile = Path.Combine(SourceDirectory(), "PublicApi.approved.txt");
+        string approvedFile = Path.Combine(SourceDirectory(), approvedFileName);
 
         if (Environment.GetEnvironmentVariable("UPDATE_PUBLIC_API") == "1")
             File.WriteAllText(approvedFile, current + "\n");

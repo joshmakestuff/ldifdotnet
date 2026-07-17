@@ -1,0 +1,21 @@
+namespace LdifDotNet.Generator
+{
+    public sealed class LdifGenerator
+    {
+        public LdifGenerator(LdifDotNet.Generator.LdifGeneratorOptions? options = null) { }
+        public LdifDotNet.LdifContentRecord Group(string parentDn, System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifContentRecord> memberPool) { }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifContentRecord> Groups(int count, string parentDn, System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifContentRecord> memberPool) { }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifContentRecord> People(int count, string parentDn) { }
+        public LdifDotNet.LdifContentRecord Person(string parentDn) { }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifContentRecord> SampleDirectory() { }
+    }
+    public sealed class LdifGeneratorOptions
+    {
+        public LdifGeneratorOptions() { }
+        public string BaseDn { get; set; }
+        public int GroupCount { get; set; }
+        public string Locale { get; set; }
+        public int PeopleCount { get; set; }
+        public int? Seed { get; set; }
+    }
+}
