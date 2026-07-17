@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace LdifDotNet;
 
 /// <summary>
@@ -95,8 +97,20 @@ public sealed class LdifReader : IDisposable
     {
         var lines = new List<LogicalLine>();
         string? current = null;
+        StringBuilder? folded = null; // created lazily on the first continuation of `current`
         int currentNumber = 0;
         bool inComment = false;
+
+        // Appending continuations to a string would copy the whole accumulated
+        // line each time — quadratic for a large value folded into many short
+        // physical lines. Unfolded lines stay as the string the reader returned.
+        void CommitCurrent()
+        {
+            if (current is null)
+                return;
+            lines.Add(new LogicalLine(folded?.ToString() ?? current, currentNumber));
+            folded = null;
+        }
 
         while (true)
         {
@@ -125,19 +139,18 @@ public sealed class LdifReader : IDisposable
                     continue; // continuation of a folded comment
                 if (current is null)
                     throw new LdifParseException("continuation line with nothing to continue", _lineNumber);
-                current += physical[1..];
+                folded ??= new StringBuilder(current);
+                folded.Append(physical, 1, physical.Length - 1);
                 continue;
             }
 
             inComment = false;
-            if (current is not null)
-                lines.Add(new LogicalLine(current, currentNumber));
+            CommitCurrent();
             current = physical;
             currentNumber = _lineNumber;
         }
 
-        if (current is not null)
-            lines.Add(new LogicalLine(current, currentNumber));
+        CommitCurrent();
         return lines.Count == 0 ? null : lines;
     }
 
