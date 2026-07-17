@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <Description>Parser for LDAP schema definitions (RFC 4512, slapd.conf schema file format).</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

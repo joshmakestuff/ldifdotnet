@@ -29,6 +29,7 @@ public sealed class SchemaEntryGenerator
     private readonly Faker _faker;
     private readonly Dictionary<string, HashSet<string>> _usedRdnValues = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Creates a generator for the given schema; null options use the defaults.</summary>
     public SchemaEntryGenerator(LdapSchema schema, SchemaGeneratorOptions? options = null)
     {
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
