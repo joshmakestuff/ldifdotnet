@@ -14,8 +14,8 @@
     PrivateData          = @{
         PSData = @{
             Tags       = @('LDIF', 'LDAP', 'RFC2849', 'OpenLDAP')
-            LicenseUri = ''
-            ProjectUri = ''
+            LicenseUri = 'https://github.com/joshmakestuff/ldifdotnet/blob/main/LICENSE'
+            ProjectUri = 'https://github.com/joshmakestuff/ldifdotnet'
         }
     }
 }

@@ -1,0 +1,83 @@
+name: Release
+
+# Tag vX.Y.Z (or vX.Y.Z-prerelease.N) to cut a release. While the repo is
+# private, the NuGet/PSGallery publish steps are dormant: they run only when
+# the corresponding API-key secret exists. Everything else (full test suite
+# including the OpenLDAP differential, pack, GitHub draft release with
+# artifacts) runs on every tag, so the pipeline is continuously exercised.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      LDIF_DIFFERENTIAL: "1"
+      LDIF_EXPECTED_OPENLDAP: "2.6"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install OpenLDAP tools
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends slapd ldap-utils
+          sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.slapd 2>/dev/null || true
+
+      - name: Full test suite (incl. differential)
+        run: dotnet test
+
+      - name: Derive version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Pack NuGet packages
+        run: dotnet pack -c Release -o packages -p:Version=$VERSION -p:ContinuousIntegrationBuild=true
+
+      - name: Stage PowerShell module
+        shell: pwsh
+        run: |
+          dotnet publish src/LdifDotNet.PowerShell -c Release -o staging/LdifDotNet.PowerShell `
+            -p:Version=$env:VERSION -p:ContinuousIntegrationBuild=true
+          $manifest = 'staging/LdifDotNet.PowerShell/LdifDotNet.PowerShell.psd1'
+          # PSGallery versions come from the manifest; sync it to the tag.
+          $stable = $env:VERSION.Split('-')[0]
+          Update-PSModuleManifest -Path $manifest -ModuleVersion $stable
+          if ($env:VERSION.Contains('-')) {
+            Update-PSModuleManifest -Path $manifest -Prerelease $env:VERSION.Split('-', 2)[1].Replace('.', '')
+          }
+          Compress-Archive -Path staging/LdifDotNet.PowerShell -DestinationPath "packages/LdifDotNet.PowerShell.$env:VERSION.zip"
+
+      - name: Create GitHub release (draft)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" packages/* --draft --generate-notes --title "$GITHUB_REF_NAME"
+
+      - name: Publish to NuGet (only when NUGET_API_KEY is set)
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -n "$NUGET_API_KEY" ]; then
+            dotnet nuget push 'packages/*.nupkg' --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json --skip-duplicate
+          else
+            echo "NUGET_API_KEY not set; skipping NuGet publish (private phase)."
+          fi
+
+      - name: Publish to PSGallery (only when PSGALLERY_API_KEY is set)
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          if ($env:PSGALLERY_API_KEY) {
+            Publish-PSResource -Path staging/LdifDotNet.PowerShell -ApiKey $env:PSGALLERY_API_KEY
+          } else {
+            Write-Host 'PSGALLERY_API_KEY not set; skipping PSGallery publish (private phase).'
+          }
