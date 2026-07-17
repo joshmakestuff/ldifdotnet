@@ -150,16 +150,42 @@ public class PowerShellModuleTests
                 $bad = "dn: dc=x" | ConvertFrom-Ldif
                 try { $bad | Export-Ldif $args[1] } catch { "caught=True" }
                 "content=$(Get-Content $args[1])"
-                "tmpexists=$(Test-Path ($args[1] + '.tmp'))"
+                $leftover = @(Get-ChildItem -Path (Split-Path $args[1]) -Filter ((Split-Path $args[1] -Leaf) + '.*.tmp'))
+                "tmpcount=$($leftover.Count)"
                 """, ManifestPath, temp);
 
             Assert.Contains("caught=True", output);
             Assert.Contains("content=original", output);
-            Assert.Contains("tmpexists=False", output);
+            Assert.Contains("tmpcount=0", output);
         }
         finally
         {
             File.Delete(temp);
+        }
+    }
+
+    [PwshFact]
+    public void Export_Ldif_leaves_an_unrelated_sibling_tmp_untouched()
+    {
+        string temp = Path.Combine(Path.GetTempPath(), $"ldifdotnet-ps-{Guid.NewGuid():N}.ldif");
+        string sibling = temp + ".tmp";
+        try
+        {
+            string output = RunPwsh("""
+                Import-Module $args[0]
+                Set-Content ($args[2] + '.tmp') 'do not touch'
+                Import-Ldif $args[1] | Export-Ldif $args[2]
+                "sibling=$(Get-Content ($args[2] + '.tmp'))"
+                "exported=$(@(Import-Ldif $args[2]).Count)"
+                """, ManifestPath, Fixtures.PathOf("rfc2849", "example1.ldif"), temp);
+
+            Assert.Contains("sibling=do not touch", output);
+            Assert.Contains("exported=2", output);
+        }
+        finally
+        {
+            File.Delete(temp);
+            File.Delete(sibling);
         }
     }
 
