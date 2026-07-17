@@ -138,6 +138,11 @@ public static class Dn
     {
         ArgumentNullException.ThrowIfNull(distinguishedName);
 
+        // An empty (or all-insignificant-whitespace) DN is the empty sequence; an
+        // empty component anywhere else is a structural error, not something to skip.
+        if (string.IsNullOrWhiteSpace(distinguishedName))
+            return [];
+
         var rdns = new List<RelativeDistinguishedName>();
         foreach (string rdnText in SplitUnescaped(distinguishedName, ','))
         {
@@ -146,15 +151,15 @@ public static class Dn
             {
                 string trimmed = TrimUnescaped(atavText);
                 if (trimmed.Length == 0)
-                    continue;
+                    throw new ArgumentException("DN has an empty RDN or attribute component.", nameof(distinguishedName));
 
                 int eq = IndexOfUnescaped(trimmed, '=');
                 if (eq <= 0)
                     throw new ArgumentException($"DN component '{trimmed}' is not 'type=value'.", nameof(distinguishedName));
 
                 string type = TrimUnescaped(trimmed[..eq]);
-                if (type.Length == 0)
-                    throw new ArgumentException($"DN component '{trimmed}' has an empty attribute type.", nameof(distinguishedName));
+                if (!IsValidAttributeType(type))
+                    throw new ArgumentException($"DN component '{trimmed}' has an invalid attribute type '{type}'.", nameof(distinguishedName));
 
                 string rawValue = TrimUnescaped(trimmed[(eq + 1)..]);
                 if (rawValue.StartsWith('#'))
@@ -169,11 +174,43 @@ public static class Dn
                 attributes.Add(new AttributeTypeAndValue(type, UnescapeValue(rawValue)));
             }
 
-            if (attributes.Count > 0)
-                rdns.Add(new RelativeDistinguishedName(attributes));
+            rdns.Add(new RelativeDistinguishedName(attributes));
         }
 
         return rdns;
+    }
+
+    /// <summary>RFC 4514 attributeType: an RFC 4512 <c>descr</c> (letter, then letters/digits/hyphens) or a <c>numericoid</c>.</summary>
+    private static bool IsValidAttributeType(string type)
+    {
+        if (type.Length == 0)
+            return false;
+        if (char.IsAsciiLetter(type[0]))
+        {
+            foreach (char c in type)
+            {
+                if (!char.IsAsciiLetterOrDigit(c) && c != '-')
+                    return false;
+            }
+            return true;
+        }
+        return IsNumericOid(type);
+    }
+
+    /// <summary>RFC 4512 numericoid: 1*DIGIT *("." 1*DIGIT).</summary>
+    private static bool IsNumericOid(string type)
+    {
+        bool expectDigit = true;
+        foreach (char c in type)
+        {
+            if (char.IsAsciiDigit(c))
+                expectDigit = false;
+            else if (c == '.' && !expectDigit)
+                expectDigit = true;
+            else
+                return false;
+        }
+        return type.Length > 0 && !expectDigit;
     }
 
     private static bool IsHex(char c) => c is (>= '0' and <= '9') or (>= 'a' and <= 'f') or (>= 'A' and <= 'F');
