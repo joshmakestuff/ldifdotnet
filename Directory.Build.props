@@ -7,9 +7,15 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- Cross-platform is an invariant: platform-compat analyzers (CA1416 etc.)
          fail the build on OS-specific API use. See CLAUDE.md. -->
-    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisLevel>latest-all</AnalysisLevel>
     <!-- Style is spec: .editorconfig rules at warning severity fail the build. -->
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- RS0030: bans clock/CWD/unseeded-random APIs; see BannedSymbols.txt. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" Link="BannedSymbols.txt" />
+  </ItemGroup>
 
 </Project>

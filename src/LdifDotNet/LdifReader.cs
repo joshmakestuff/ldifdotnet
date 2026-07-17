@@ -374,11 +374,11 @@ public sealed class LdifReader : IDisposable
     /// <summary>The attribute name of a logical line, or null if it has no ':' separator.</summary>
     private static string? LineName(LogicalLine line)
     {
-        int colon = line.Text.IndexOf(':');
+        int colon = line.Text.IndexOf(':', StringComparison.Ordinal);
         return colon <= 0 ? null : line.Text[..colon];
     }
 
-    private static int AfterName(LogicalLine line) => line.Text.IndexOf(':');
+    private static int AfterName(LogicalLine line) => line.Text.IndexOf(':', StringComparison.Ordinal);
 
     private static bool NameEquals(string a, string b) =>
         string.Equals(a, b, StringComparison.OrdinalIgnoreCase);

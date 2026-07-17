@@ -31,9 +31,9 @@ public sealed class LdapObjectClass
     /// <summary>Names of attributes this class allows (MAY), not including inherited ones.</summary>
     public IReadOnlyList<string> May { get; internal set; } = [];
 
-    /// <summary>X-* extensions and their values.</summary>
+    /// <summary>X-* extensions and their values (names are case-insensitive).</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> Extensions { get; internal set; } =
-        new Dictionary<string, IReadOnlyList<string>>();
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 
     public override string ToString() => Name;
 }

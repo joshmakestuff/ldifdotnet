@@ -125,9 +125,9 @@ public sealed class LdifGenerator
     private LdifContentRecord BaseEntry()
     {
         string baseDn = _options.BaseDn;
-        int comma = baseDn.IndexOf(',');
+        int comma = baseDn.IndexOf(',', StringComparison.Ordinal);
         string firstRdn = comma < 0 ? baseDn : baseDn[..comma];
-        int equals = firstRdn.IndexOf('=');
+        int equals = firstRdn.IndexOf('=', StringComparison.Ordinal);
         if (equals <= 0)
             throw new ArgumentException($"Base DN '{baseDn}' does not start with a valid RDN.");
         string attribute = firstRdn[..equals].Trim();

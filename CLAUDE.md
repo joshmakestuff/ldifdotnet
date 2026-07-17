@@ -36,9 +36,14 @@ current LTS only (net10.0, C# 14); the PowerShell module requires pwsh 7.6+
   from whitespace normalization — trailing spaces there are RFC-meaningful.
 - Cross-platform is an invariant, enforced two ways: the full suite runs on all
   three OSes in CI, and .NET analyzers run as errors (`AnalysisLevel
-  latest-recommended` in Directory.Build.props), including platform-compat
-  (CA1416) and locale-safety rules (CA1305/CA1310 — ordinal comparisons,
-  invariant formatting). Never assume path separators or OS file locations in
+  latest-all` in Directory.Build.props; deliberate exceptions are documented in
+  .editorconfig and project files), including platform-compat (CA1416) and
+  locale-safety rules (CA1305/CA1307/CA1310 — ordinal comparisons, invariant
+  formatting).
+- Banned APIs (RS0030, BannedSymbols.txt): no clocks (DateTime.Now etc.), no
+  unseeded randomness, no process-CWD reliance. These back the generator
+  determinism and explicit-path invariants; extend the list rather than
+  suppressing RS0030. Never assume path separators or OS file locations in
   product code; build paths with Path.Combine. The differential tests' unix
   defaults (`/etc/ldap/schema` etc.) are the one deliberate exception — they are
   Linux-gated and env-overridable. Unix-looking strings in generator output

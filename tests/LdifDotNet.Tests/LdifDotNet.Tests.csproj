@@ -2,8 +2,10 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <!-- CA1707: snake_case test names are the xunit convention. -->
-    <NoWarn>$(NoWarn);CA1707</NoWarn>
+    <!-- CA1707: snake_case test names are the xunit convention.
+         CA1307: culture-explicit comparisons are ceremony in test assertions.
+         CA1515: xunit requires public test classes. -->
+    <NoWarn>$(NoWarn);CA1707;CA1307;CA1515</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
