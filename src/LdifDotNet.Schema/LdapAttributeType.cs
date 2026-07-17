@@ -43,9 +43,9 @@ public sealed class LdapAttributeType
     /// <summary>USAGE value (e.g. "directoryOperation"); null means userApplications.</summary>
     public string? Usage { get; internal set; }
 
-    /// <summary>X-* extensions and their values.</summary>
+    /// <summary>X-* extensions and their values (names are case-insensitive).</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> Extensions { get; internal set; } =
-        new Dictionary<string, IReadOnlyList<string>>();
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 
     public override string ToString() => Name;
 }

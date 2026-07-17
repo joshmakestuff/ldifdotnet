@@ -35,6 +35,15 @@ dotnet_style_qualification_for_property = false:warning
 dotnet_style_qualification_for_method = false:warning
 dotnet_style_qualification_for_event = false:warning
 
+# --- Deliberate exceptions to AnalysisLevel latest-all -----------------------
+# CA1032: parse exceptions deliberately require message + line number; the
+# standard parameterless/message-only constructors would create broken instances.
+dotnet_diagnostic.CA1032.severity = none
+# CA1308: lowercase is the LDAP domain convention (attribute names, uids, index
+# keys). All lowering is invariant; the locale-normalization risk CA1308 guards
+# against does not apply.
+dotnet_diagnostic.CA1308.severity = none
+
 # Modern idioms the code uses throughout
 csharp_style_prefer_switch_expression = true:warning
 csharp_style_prefer_not_pattern = true:warning

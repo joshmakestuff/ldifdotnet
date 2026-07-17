@@ -92,6 +92,7 @@ public sealed class LdifWriter : IDisposable
     /// <summary>Writes all records to a file (UTF-8, LF line endings).</summary>
     public static void WriteFile(string path, IEnumerable<LdifRecord> records, LdifWriterOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(records);
         using var streamWriter = new StreamWriter(path);
         using var writer = new LdifWriter(streamWriter, options);
         foreach (var record in records)
@@ -101,6 +102,7 @@ public sealed class LdifWriter : IDisposable
     /// <summary>Writes all records to an LDIF string.</summary>
     public static string WriteToString(IEnumerable<LdifRecord> records, LdifWriterOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(records);
         using var stringWriter = new StringWriter();
         using (var writer = new LdifWriter(stringWriter, options))
         {

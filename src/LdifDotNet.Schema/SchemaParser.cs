@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace LdifDotNet.Schema;
 
 /// <summary>
@@ -82,7 +84,7 @@ internal sealed class SchemaParser
     /// <summary>Expands "macro" or "macro:suffix" references against declared OID macros.</summary>
     private string ResolveOid(string oid)
     {
-        int colon = oid.IndexOf(':');
+        int colon = oid.IndexOf(':', StringComparison.Ordinal);
         if (colon >= 0)
         {
             string prefix = oid[..colon];
@@ -121,9 +123,9 @@ internal sealed class SchemaParser
                 case "SUBSTR" or "SUBSTRINGS": result.Substring = cursor.ReadValue(); break;
                 case "SYNTAX":
                     string syntax = cursor.ReadValue();
-                    int brace = syntax.IndexOf('{');
+                    int brace = syntax.IndexOf('{', StringComparison.Ordinal);
                     if (brace >= 0 && syntax.EndsWith('}')
-                        && int.TryParse(syntax[(brace + 1)..^1], out int length))
+                        && int.TryParse(syntax[(brace + 1)..^1], NumberStyles.None, CultureInfo.InvariantCulture, out int length))
                     {
                         result.SyntaxLength = length;
                         syntax = syntax[..brace];

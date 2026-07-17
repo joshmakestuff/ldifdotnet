@@ -1,0 +1,16 @@
+# Banned APIs, enforced by Microsoft.CodeAnalysis.BannedApiAnalyzers (RS0030).
+# Two invariants back this list (see CLAUDE.md):
+#  - Generator determinism: output must be a pure function of the seed. No clocks.
+#  - No ambient-state path resolution: the process CWD is not the user's CWD
+#    (PowerShell hosts, test runners); resolve paths explicitly.
+
+P:System.DateTime.Now;Non-deterministic clock. Derive time values from seeded input (see SchemaEntryGenerator.RandomTimestamp) or accept them as parameters.
+P:System.DateTime.UtcNow;Non-deterministic clock. Derive time values from seeded input or accept them as parameters.
+P:System.DateTime.Today;Non-deterministic clock. Derive time values from seeded input or accept them as parameters.
+P:System.DateTimeOffset.Now;Non-deterministic clock. Derive time values from seeded input or accept them as parameters.
+P:System.DateTimeOffset.UtcNow;Non-deterministic clock. Derive time values from seeded input or accept them as parameters.
+P:System.Random.Shared;Unseeded randomness breaks generator determinism. Use the seeded Bogus Randomizer.
+M:System.Random.#ctor;Unseeded randomness breaks generator determinism. Use the seeded Bogus Randomizer (or Random(seed) with an explicit seed).
+P:System.Environment.CurrentDirectory;Process CWD differs from the host's logical CWD (PowerShell, test runners). Resolve paths explicitly against a known root.
+M:System.IO.Directory.GetCurrentDirectory;Process CWD differs from the host's logical CWD (PowerShell, test runners). Resolve paths explicitly against a known root.
+M:System.IO.Directory.SetCurrentDirectory(System.String);Mutating process CWD breaks concurrent path resolution. Pass explicit paths instead.
