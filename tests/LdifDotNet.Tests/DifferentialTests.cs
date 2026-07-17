@@ -70,7 +70,9 @@ public class DifferentialTests
         }).SampleDirectory();
 
         string dataFile = Path.Combine(work, "data.ldif");
-        LdifWriter.WriteFile(dataFile, records);
+        // slapadd (unlike ldapadd) rejects the RFC 2849 version line — a real
+        // OpenLDAP behavior this harness surfaced on its first run.
+        LdifWriter.WriteFile(dataFile, records, new LdifWriterOptions { IncludeVersionLine = false });
 
         var slapadd = Run(Tool("slapadd"), "-f", confFile, "-l", dataFile);
         Assert.True(slapadd.ExitCode == 0, $"slapadd rejected our writer's LDIF:\n{slapadd.StdErr}");
