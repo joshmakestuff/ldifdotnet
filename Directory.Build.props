@@ -18,7 +18,7 @@
     <VersionPrefix>0.1.0</VersionPrefix>
     <Authors>Joshua Toon</Authors>
     <Copyright>Copyright 2026 Joshua Toon</Copyright>
-    <PackageLicenseExpression>OLDAP-2.8</PackageLicenseExpression>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/joshmakestuff/ldifdotnet</PackageProjectUrl>
     <RepositoryUrl>https://github.com/joshmakestuff/ldifdotnet</RepositoryUrl>
     <PackageTags>ldif;ldap;rfc2849;openldap</PackageTags>
