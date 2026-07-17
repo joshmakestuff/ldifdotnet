@@ -1,0 +1,105 @@
+namespace LdifDotNet
+{
+    public sealed class LdifAddRecord : LdifDotNet.LdifChangeRecord
+    {
+        public LdifAddRecord(string dn, params LdifDotNet.LdifAttribute[] attributes) { }
+        public LdifAddRecord(string dn, System.Collections.Generic.IEnumerable<LdifDotNet.LdifAttribute> attributes) { }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifAttribute> Attributes { get; }
+    }
+    public sealed class LdifAttribute
+    {
+        public LdifAttribute(string name, params LdifDotNet.LdifValue[] values) { }
+        public LdifAttribute(string name, System.Collections.Generic.IEnumerable<LdifDotNet.LdifValue> values) { }
+        public string Name { get; }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifValue> Values { get; }
+    }
+    public abstract class LdifChangeRecord : LdifDotNet.LdifRecord
+    {
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifControl> Controls { get; init; }
+    }
+    public sealed class LdifContentRecord : LdifDotNet.LdifRecord
+    {
+        public LdifContentRecord(string dn, params LdifDotNet.LdifAttribute[] attributes) { }
+        public LdifContentRecord(string dn, System.Collections.Generic.IEnumerable<LdifDotNet.LdifAttribute> attributes) { }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifAttribute> Attributes { get; }
+        public LdifDotNet.LdifAttribute? this[string name] { get; }
+    }
+    public sealed class LdifControl
+    {
+        public LdifControl(string oid, bool? criticality = default, LdifDotNet.LdifValue? value = default) { }
+        public bool? Criticality { get; }
+        public string Oid { get; }
+        public LdifDotNet.LdifValue? Value { get; }
+    }
+    public sealed class LdifDeleteRecord : LdifDotNet.LdifChangeRecord
+    {
+        public LdifDeleteRecord(string dn) { }
+    }
+    public sealed class LdifModDnRecord : LdifDotNet.LdifChangeRecord
+    {
+        public LdifModDnRecord(string dn, string newRdn, bool deleteOldRdn, string? newSuperior = null) { }
+        public bool DeleteOldRdn { get; }
+        public string NewRdn { get; }
+        public string? NewSuperior { get; }
+    }
+    public sealed class LdifModification
+    {
+        public LdifModification(LdifDotNet.LdifModificationType type, string attributeName, params LdifDotNet.LdifValue[] values) { }
+        public LdifModification(LdifDotNet.LdifModificationType type, string attributeName, System.Collections.Generic.IEnumerable<LdifDotNet.LdifValue> values) { }
+        public string AttributeName { get; }
+        public LdifDotNet.LdifModificationType Type { get; }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifValue> Values { get; }
+    }
+    public enum LdifModificationType
+    {
+        Add = 0,
+        Delete = 1,
+        Replace = 2,
+    }
+    public sealed class LdifModifyRecord : LdifDotNet.LdifChangeRecord
+    {
+        public LdifModifyRecord(string dn, params LdifDotNet.LdifModification[] modifications) { }
+        public LdifModifyRecord(string dn, System.Collections.Generic.IEnumerable<LdifDotNet.LdifModification> modifications) { }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifModification> Modifications { get; }
+    }
+    public sealed class LdifReader : System.IDisposable
+    {
+        public LdifReader(System.IO.TextReader reader) { }
+        public void Dispose() { }
+        public LdifDotNet.LdifRecord? ReadRecord() { }
+        public static System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifRecord> Parse(string ldif) { }
+        public static System.Collections.Generic.IEnumerable<LdifDotNet.LdifRecord> Read(System.IO.TextReader reader) { }
+        public static System.Collections.Generic.IEnumerable<LdifDotNet.LdifRecord> ReadFile(string path) { }
+    }
+    public abstract class LdifRecord
+    {
+        public string Dn { get; }
+    }
+    public readonly struct LdifValue : System.IEquatable<LdifDotNet.LdifValue>
+    {
+        public bool IsBinary { get; }
+        public byte[] AsBytes() { }
+        public string AsString() { }
+        public bool Equals(LdifDotNet.LdifValue other) { }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public override string ToString() { }
+        public static LdifDotNet.LdifValue FromBytes(byte[] value) { }
+        public static LdifDotNet.LdifValue FromString(string value) { }
+        public static LdifDotNet.LdifValue op_Implicit(string value) { }
+    }
+    public sealed class LdifWriter : System.IDisposable
+    {
+        public LdifWriter(System.IO.TextWriter writer, LdifDotNet.LdifWriterOptions? options = null) { }
+        public void Dispose() { }
+        public void WriteRecord(LdifDotNet.LdifRecord record) { }
+        public static void WriteFile(string path, System.Collections.Generic.IEnumerable<LdifDotNet.LdifRecord> records, LdifDotNet.LdifWriterOptions? options = null) { }
+        public static string WriteToString(System.Collections.Generic.IEnumerable<LdifDotNet.LdifRecord> records, LdifDotNet.LdifWriterOptions? options = null) { }
+    }
+    public sealed class LdifWriterOptions
+    {
+        public LdifWriterOptions() { }
+        public bool IncludeVersionLine { get; set; }
+        public int WrapColumn { get; set; }
+    }
+}

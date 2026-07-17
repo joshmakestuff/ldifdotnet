@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LdifDotNet/LdifDotNet.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LdifDotNet.Tests/LdifDotNet.Tests.csproj" />
+  </Folder>
+</Solution>
