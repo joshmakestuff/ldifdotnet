@@ -89,6 +89,74 @@ public class PowerShellModuleTests
     }
 
     [PwshFact]
+    public void Export_Ldif_WhatIf_does_not_create_the_destination()
+    {
+        string temp = Path.Combine(Path.GetTempPath(), $"ldifdotnet-ps-{Guid.NewGuid():N}.ldif");
+        try
+        {
+            string output = RunPwsh("""
+                Import-Module $args[0]
+                Import-Ldif $args[1] | Export-Ldif $args[2] -WhatIf
+                "exists=$(Test-Path $args[2])"
+                """, ManifestPath, Fixtures.PathOf("rfc2849", "example1.ldif"), temp);
+
+            Assert.Contains("exists=False", output);
+        }
+        finally
+        {
+            File.Delete(temp);
+        }
+    }
+
+    [PwshFact]
+    public void Export_Ldif_NoClobber_refuses_existing_destination()
+    {
+        string temp = Path.Combine(Path.GetTempPath(), $"ldifdotnet-ps-{Guid.NewGuid():N}.ldif");
+        try
+        {
+            string output = RunPwsh("""
+                Import-Module $args[0]
+                Set-Content $args[2] 'original'
+                try { Import-Ldif $args[1] | Export-Ldif $args[2] -NoClobber } catch { "error=$($_.FullyQualifiedErrorId)" }
+                "content=$(Get-Content $args[2])"
+                """, ManifestPath, Fixtures.PathOf("rfc2849", "example1.ldif"), temp);
+
+            Assert.Contains("error=FileExists", output);
+            Assert.Contains("content=original", output);
+        }
+        finally
+        {
+            File.Delete(temp);
+        }
+    }
+
+    [PwshFact]
+    public void Failed_export_preserves_existing_destination_and_leaves_no_temp_file()
+    {
+        string temp = Path.Combine(Path.GetTempPath(), $"ldifdotnet-ps-{Guid.NewGuid():N}.ldif");
+        try
+        {
+            string output = RunPwsh("""
+                Import-Module $args[0]
+                Set-Content $args[1] 'original'
+                # The tolerant reader parses a dn-only record; the strict writer rejects it.
+                $bad = "dn: dc=x" | ConvertFrom-Ldif
+                try { $bad | Export-Ldif $args[1] } catch { "caught=True" }
+                "content=$(Get-Content $args[1])"
+                "tmpexists=$(Test-Path ($args[1] + '.tmp'))"
+                """, ManifestPath, temp);
+
+            Assert.Contains("caught=True", output);
+            Assert.Contains("content=original", output);
+            Assert.Contains("tmpexists=False", output);
+        }
+        finally
+        {
+            File.Delete(temp);
+        }
+    }
+
+    [PwshFact]
     public void ConvertTo_Ldif_produces_parseable_output_and_honors_NoWrap()
     {
         string output = RunPwsh("""
