@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LdifDotNet\LdifDotNet.csproj" />
+    <ProjectReference Include="..\LdifDotNet.Schema\LdifDotNet.Schema.csproj" />
   </ItemGroup>
 
   <ItemGroup>

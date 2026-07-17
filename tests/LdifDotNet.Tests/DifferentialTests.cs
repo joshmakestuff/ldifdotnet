@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using LdifDotNet.Generator;
+using LdifDotNet.Schema;
 
 namespace LdifDotNet.Tests;
 
@@ -30,6 +31,9 @@ public class DifferentialTests
         "createTimestamp", "modifiersName", "modifyTimestamp", "contextCSN",
     };
 
+    private static string SchemaDir =>
+        Environment.GetEnvironmentVariable("LDIF_SCHEMA_DIR") ?? "/etc/ldap/schema";
+
     [DifferentialFact]
     public void Openldap_version_matches_pinned_claim()
     {
@@ -42,17 +46,60 @@ public class DifferentialTests
     [DifferentialFact]
     public void Generated_directory_loads_into_openldap_and_round_trips()
     {
+        var records = new LdifGenerator(new LdifGeneratorOptions
+        {
+            Seed = 20260717,
+            PeopleCount = 50,
+            GroupCount = 8,
+        }).SampleDirectory();
+
+        AssertLoadsAndRoundTrips(
+            records,
+            [$"{SchemaDir}/core.schema", $"{SchemaDir}/cosine.schema", $"{SchemaDir}/inetorgperson.schema"]);
+    }
+
+    [DifferentialFact]
+    public void Schema_generated_eduperson_entries_load_into_openldap()
+    {
+        string[] schemaFiles =
+        [
+            $"{SchemaDir}/core.schema",
+            $"{SchemaDir}/cosine.schema",
+            $"{SchemaDir}/inetorgperson.schema",
+            Fixtures.PathOf("schemas/contrib/eduperson.schema"),
+        ];
+
+        var options = new SchemaGeneratorOptions { Seed = 424242, OptionalAttributeFill = 1.0 };
+        options.AuxiliaryClasses.Add("eduPerson");
+        var generator = new SchemaEntryGenerator(LdapSchema.Load(schemaFiles), options);
+
+        var records = new List<LdifContentRecord>
+        {
+            new("dc=example,dc=com",
+                new LdifAttribute("objectClass", "top", "dcObject", "organization"),
+                new LdifAttribute("dc", "example"),
+                new LdifAttribute("o", "Example Org")),
+            new("ou=people,dc=example,dc=com",
+                new LdifAttribute("objectClass", "top", "organizationalUnit"),
+                new LdifAttribute("ou", "people")),
+        };
+        records.AddRange(generator.Entries("inetOrgPerson", 25, "ou=people,dc=example,dc=com"));
+
+        AssertLoadsAndRoundTrips(records, schemaFiles);
+    }
+
+    private static void AssertLoadsAndRoundTrips(
+        IReadOnlyList<LdifContentRecord> records, IEnumerable<string> schemaIncludes)
+    {
         string work = Directory.CreateTempSubdirectory("ldifdotnet-differential").FullName;
         string databaseDir = Path.Combine(work, "db");
         Directory.CreateDirectory(databaseDir);
-        string schemaDir = Environment.GetEnvironmentVariable("LDIF_SCHEMA_DIR") ?? "/etc/ldap/schema";
         string modulePath = Environment.GetEnvironmentVariable("LDIF_SLAPD_MODULEPATH") ?? "/usr/lib/ldap";
 
         string confFile = Path.Combine(work, "slapd.conf");
+        string includes = string.Join('\n', schemaIncludes.Select(path => $"include {path}"));
         File.WriteAllText(confFile, $"""
-            include {schemaDir}/core.schema
-            include {schemaDir}/cosine.schema
-            include {schemaDir}/inetorgperson.schema
+            {includes}
             modulepath {modulePath}
             moduleload back_mdb
             database mdb
@@ -61,13 +108,6 @@ public class DifferentialTests
             directory {databaseDir}
 
             """);
-
-        var records = new LdifGenerator(new LdifGeneratorOptions
-        {
-            Seed = 20260717,
-            PeopleCount = 50,
-            GroupCount = 8,
-        }).SampleDirectory();
 
         string dataFile = Path.Combine(work, "data.ldif");
         // slapadd (unlike ldapadd) rejects the RFC 2849 version line — a real
