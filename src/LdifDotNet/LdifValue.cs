@@ -37,8 +37,16 @@ public readonly struct LdifValue : IEquatable<LdifValue>
     /// reader for freshly decoded base64 buffers.</summary>
     internal static LdifValue FromOwnedBytes(byte[] value) => new(null, value, null);
 
-    public static LdifValue FromUrl(Uri url) =>
-        new(null, null, url ?? throw new ArgumentNullException(nameof(url)));
+    /// <summary>Creates a URL value reference. The URI must be absolute: RFC 2849
+    /// URL references are resolved by the consumer, and this library's reader
+    /// rejects relative references, so a relative URI could never round-trip.</summary>
+    public static LdifValue FromUrl(Uri url)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        if (!url.IsAbsoluteUri)
+            throw new ArgumentException("A URL value reference must be an absolute URI (RFC 2849).", nameof(url));
+        return new(null, null, url);
+    }
 
     public static implicit operator LdifValue(string value) => FromString(value);
 
@@ -63,6 +71,10 @@ public readonly struct LdifValue : IEquatable<LdifValue>
         : _bytes is not null ? [.. _bytes] : Encoding.UTF8.GetBytes(_text ?? "");
 
     private byte[] Octets() => _bytes ?? Encoding.UTF8.GetBytes(_text ?? "");
+
+    /// <summary>The internal byte storage when binary, without copying; null for
+    /// text and URL values. Used by the reader for strict UTF-8 decoding of DN fields.</summary>
+    internal byte[]? BinaryOctets => _bytes;
 
     public bool Equals(LdifValue other)
     {
