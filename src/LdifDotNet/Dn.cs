@@ -4,6 +4,13 @@ using System.Text;
 
 namespace LdifDotNet;
 
+file static class DnStrictUtf8
+{
+    // RFC 4514 requires DN strings to be valid UTF-8; reject invalid octets rather
+    // than decode them to U+FFFD (which collapses distinct invalid inputs to one value).
+    public static readonly UTF8Encoding Instance = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+}
+
 /// <summary>
 /// RFC 4514 distinguished-name composition: escape attribute values, build RDNs
 /// and DNs from parts, and parse a DN string into its ordered components. This is
@@ -65,7 +72,14 @@ public static class Dn
         {
             if (hexRun.Count == 0)
                 return;
-            result.Append(Encoding.UTF8.GetString(hexRun.ToArray()));
+            try
+            {
+                result.Append(DnStrictUtf8.Instance.GetString(hexRun.ToArray()));
+            }
+            catch (DecoderFallbackException)
+            {
+                throw new ArgumentException("DN value has a hex escape run that is not valid UTF-8.", nameof(value));
+            }
             hexRun.Clear();
         }
 
