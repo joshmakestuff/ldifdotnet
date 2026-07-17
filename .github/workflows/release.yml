@@ -19,6 +19,7 @@ jobs:
     env:
       LDIF_DIFFERENTIAL: "1"
       LDIF_EXPECTED_OPENLDAP: "2.6"
+      LDIF_REQUIRE_PWSH: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
