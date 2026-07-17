@@ -13,8 +13,29 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
+      - run: dotnet test
+
+  differential:
+    name: differential vs OpenLDAP
+    runs-on: ubuntu-latest
+    env:
+      LDIF_DIFFERENTIAL: "1"
+      LDIF_EXPECTED_OPENLDAP: "2.6"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+      - name: Install OpenLDAP tools
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends slapd ldap-utils
+          # slapadd/slapcat run with our own config in a temp dir; the packaged
+          # AppArmor profile would deny that, so unload it.
+          sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.slapd 2>/dev/null || true
+          /usr/sbin/slapd -V 2>&1 | head -2 || true
       - run: dotnet test
