@@ -41,6 +41,14 @@ public class LdifValueTests
     }
 
     [Fact]
+    public void FromUrl_rejects_relative_uris()
+    {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            LdifValue.FromUrl(new Uri("relative/photo.jpg", UriKind.Relative)));
+        Assert.Contains("absolute", ex.Message);
+    }
+
+    [Fact]
     public void Text_and_binary_values_with_equal_octets_are_equal()
     {
         var text = LdifValue.FromString("abc");

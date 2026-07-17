@@ -8,6 +8,8 @@ namespace LdifDotNet;
 /// </summary>
 public sealed class LdifReader : IDisposable
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     private readonly TextReader _reader;
     private readonly bool _ownsReader;
     private int _lineNumber;
@@ -162,7 +164,7 @@ public sealed class LdifReader : IDisposable
         var dnValue = ParseValueSpec(dnLine, AfterName(dnLine));
         if (dnValue.IsUrl)
             throw new LdifParseException("a DN cannot be a URL reference", dnLine.Number);
-        string dn = dnValue.AsString();
+        string dn = DecodeDnField(dnValue, "dn", dnLine.Number);
         i++;
 
         // Per RFC 2849 a change record is dn, then controls, then changetype. Only
@@ -206,7 +208,7 @@ public sealed class LdifReader : IDisposable
 
     private LdifModDnRecord ParseModDn(string dn, List<LdifControl> controls, List<LogicalLine> lines, int i)
     {
-        string newRdn = ExpectValue(lines, ref i, "newrdn");
+        string newRdn = ExpectValue(lines, ref i, "newrdn", dnField: true);
         string deleteOldRdn = ExpectValue(lines, ref i, "deleteoldrdn").Trim();
         bool delete = deleteOldRdn switch
         {
@@ -218,7 +220,7 @@ public sealed class LdifReader : IDisposable
         string? newSuperior = null;
         if (i < lines.Count && LineName(lines[i]) is { } n && NameEquals(n, "newsuperior"))
         {
-            newSuperior = ParseValueSpec(lines[i], AfterName(lines[i])).AsString();
+            newSuperior = DecodeDnField(ParseValueSpec(lines[i], AfterName(lines[i])), "newsuperior", lines[i].Number);
             i++;
         }
 
@@ -227,16 +229,36 @@ public sealed class LdifReader : IDisposable
         return new LdifModDnRecord(dn, newRdn, delete, newSuperior) { Controls = controls };
     }
 
-    private string ExpectValue(List<LogicalLine> lines, ref int i, string expectedName)
+    private string ExpectValue(List<LogicalLine> lines, ref int i, string expectedName, bool dnField = false)
     {
         if (i >= lines.Count || LineName(lines[i]) is not { } name || !NameEquals(name, expectedName))
         {
             int number = i < lines.Count ? lines[i].Number : _lineNumber;
             throw new LdifParseException($"expected '{expectedName}:'", number);
         }
-        string value = ParseValueSpec(lines[i], AfterName(lines[i])).AsString();
+        var line = lines[i];
+        var parsed = ParseValueSpec(line, AfterName(line));
         i++;
-        return value;
+        return dnField ? DecodeDnField(parsed, expectedName, line.Number) : parsed.AsString();
+    }
+
+    /// <summary>
+    /// Converts a DN-valued field (dn, newrdn, newsuperior) to text. RFC 2849
+    /// requires base64-encoded distinguished-name fields to be valid UTF-8, so
+    /// invalid sequences are a parse error rather than silent U+FFFD replacement.
+    /// </summary>
+    private static string DecodeDnField(LdifValue value, string field, int lineNumber)
+    {
+        if (value.BinaryOctets is not { } bytes)
+            return value.AsString();
+        try
+        {
+            return StrictUtf8.GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            throw new LdifParseException($"base64 '{field}' value is not valid UTF-8", lineNumber);
+        }
     }
 
     private static List<LdifModification> ParseModifications(List<LogicalLine> lines, int i)
