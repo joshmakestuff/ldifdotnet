@@ -162,6 +162,8 @@ public sealed class LdifWriter : IDisposable
                     throw new ArgumentException("A content record must have at least one attribute (RFC 2849 ldif-attrval-record).", nameof(record));
                 if (FirstInvalidAttributeName(content.Attributes) is { } badContentName)
                     throw new ArgumentException($"'{badContentName}' is not a valid attribute description (RFC 2849 AttributeDescription).", nameof(record));
+                if (FirstEmptyValuedAttributeName(content.Attributes) is { } emptyContentName)
+                    throw new ArgumentException($"Attribute '{emptyContentName}' has no values; each attribute needs at least one attrval-spec (RFC 2849).", nameof(record));
                 break;
 
             case LdifAddRecord add:
@@ -169,6 +171,8 @@ public sealed class LdifWriter : IDisposable
                     throw new ArgumentException("An add change record must have at least one attribute (RFC 2849 change-add).", nameof(record));
                 if (FirstInvalidAttributeName(add.Attributes) is { } badAddName)
                     throw new ArgumentException($"'{badAddName}' is not a valid attribute description (RFC 2849 AttributeDescription).", nameof(record));
+                if (FirstEmptyValuedAttributeName(add.Attributes) is { } emptyAddName)
+                    throw new ArgumentException($"Attribute '{emptyAddName}' has no values; each attribute needs at least one attrval-spec (RFC 2849).", nameof(record));
                 break;
 
             case LdifModifyRecord modify:
@@ -194,6 +198,20 @@ public sealed class LdifWriter : IDisposable
         foreach (var attribute in attributes)
         {
             if (!IsAttributeDescription(attribute.Name))
+                return attribute.Name;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The name of the first attribute with no values, or null. An empty-valued
+    /// attribute emits no lines, so it would be silently dropped from strict output.
+    /// </summary>
+    private static string? FirstEmptyValuedAttributeName(IReadOnlyList<LdifAttribute> attributes)
+    {
+        foreach (var attribute in attributes)
+        {
+            if (attribute.Values.Count == 0)
                 return attribute.Name;
         }
         return null;
