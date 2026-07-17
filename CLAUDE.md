@@ -29,5 +29,7 @@ PowerShell 7+ only.
 - No new design documents. Decisions are recorded briefly here or expressed in
   code and tests. If a rule can't fail a build, question whether it's worth
   writing down.
-- One work item per session/agent; finish at green `dotnet test` before
-  starting the next.
+- Work items are GitHub issues on this repo (`gh issue list`). One work item
+  per session/agent; finish at green `dotnet test` before starting the next.
+- The repo is private for now; do not publish packages anywhere until it goes
+  public deliberately.
