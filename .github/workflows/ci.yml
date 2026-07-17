@@ -16,7 +16,7 @@ jobs:
       # Runner images promise pwsh; fail rather than silently skip the pwsh e2e tests.
       LDIF_REQUIRE_PWSH: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
@@ -28,7 +28,7 @@ jobs:
     env:
       LDIF_REQUIRE_PWSH: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
@@ -40,7 +40,7 @@ jobs:
     name: pack validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
@@ -60,7 +60,7 @@ jobs:
       LDIF_EXPECTED_OPENLDAP: "2.6"
       LDIF_REQUIRE_PWSH: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
