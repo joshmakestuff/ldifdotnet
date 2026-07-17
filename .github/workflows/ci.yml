@@ -16,8 +16,8 @@ jobs:
       # Runner images promise pwsh; fail rather than silently skip the pwsh e2e tests.
       LDIF_REQUIRE_PWSH: "1"
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: 10.0.x
       - run: dotnet test
@@ -28,8 +28,8 @@ jobs:
     env:
       LDIF_REQUIRE_PWSH: "1"
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: 10.0.x
       # Release differs from the Debug matrix: optimizations on, Debug.Assert
@@ -40,8 +40,8 @@ jobs:
     name: pack validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: 10.0.x
       - run: dotnet pack -c Release -o packages -p:ContinuousIntegrationBuild=true
@@ -60,8 +60,8 @@ jobs:
       LDIF_EXPECTED_OPENLDAP: "2.6"
       LDIF_REQUIRE_PWSH: "1"
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: 10.0.x
       - name: Install OpenLDAP tools
