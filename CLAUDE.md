@@ -60,8 +60,9 @@ current LTS only (net10.0, C# 14); the PowerShell module requires pwsh 7.6+
   writing down.
 - Work items are GitHub issues on this repo (`gh issue list`). One work item
   per session/agent; finish at green `dotnet test` before starting the next.
-- The repo is public; v0.1.0 shipped 2026-07-17 to nuget.org (via NuGet
+- The repo is public. v0.1.0 shipped 2026-07-17 to nuget.org (via NuGet
   Trusted Publishing — the release workflow's OIDC login; there is no NuGet
-  API key) and to PSGallery (PSGALLERY_API_KEY secret, scoped to the module).
-  Releases are cut by pushing a vX.Y.Z tag; both publishes then run
-  automatically.
+  API key) and to PSGallery (PSGALLERY_API_KEY secret, scoped to the module);
+  v0.2.0 followed the same day (public RFC 4514 `Dn` API; ergonomic PowerShell
+  record surface). Releases are cut by pushing a vX.Y.Z tag; both publishes
+  then run automatically.
