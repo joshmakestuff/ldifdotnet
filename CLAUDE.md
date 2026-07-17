@@ -2,8 +2,9 @@
 
 Pure managed .NET implementation of LDIF (RFC 2849). Deliberately NOT a P/Invoke
 binding of OpenLDAP's C code — OpenLDAP compatibility is proven by tests, not
-linkage. Primary consumer: an OpenLDAP .NET Aspire integration. Targets net8.0;
-PowerShell 7+ only.
+linkage. Primary consumer: an OpenLDAP .NET Aspire integration. Targets the
+current LTS only (net10.0, C# 14); the PowerShell module requires pwsh 7.6+
+(the .NET 10 host — older hosts cannot load net10 assemblies).
 
 ## Commands
 

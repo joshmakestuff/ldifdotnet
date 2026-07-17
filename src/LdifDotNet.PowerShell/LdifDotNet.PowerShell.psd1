@@ -5,7 +5,7 @@
     Author               = 'Joshua Toon'
     Copyright            = '(c) 2026 Joshua Toon. Licensed under the OpenLDAP Public License v2.8.'
     Description          = 'Read and write LDIF (RFC 2849): ConvertFrom-Ldif, ConvertTo-Ldif, Import-Ldif, Export-Ldif.'
-    PowerShellVersion    = '7.4'
+    PowerShellVersion    = '7.6'
     CompatiblePSEditions = @('Core')
     CmdletsToExport      = @('ConvertFrom-Ldif', 'ConvertTo-Ldif', 'Import-Ldif', 'Export-Ldif')
     FunctionsToExport    = @()
