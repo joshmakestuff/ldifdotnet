@@ -14,6 +14,12 @@ internal static class Rdn
         for (int i = 0; i < value.Length; i++)
         {
             char c = value[i];
+            if (c == '\0')
+            {
+                // RFC 4514: NUL cannot appear even backslash-escaped; it requires the hex form.
+                result.Append("\\00");
+                continue;
+            }
             bool needsEscape = c is ',' or '+' or '"' or '\\' or '<' or '>' or ';'
                 || (i == 0 && c is ' ' or '#')
                 || (i == value.Length - 1 && c == ' ');

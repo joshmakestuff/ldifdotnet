@@ -144,4 +144,65 @@ public class SchemaEntryGeneratorTests
         var generator = new SchemaEntryGenerator(CoreSchemas());
         Assert.Throws<ArgumentException>(() => generator.Entry("noSuchClass", ParentDn));
     }
+
+    [Fact]
+    public void Non_structural_primary_class_throws()
+    {
+        var generator = new SchemaEntryGenerator(CoreSchemas("schemas/contrib/rfc2307bis.schema"));
+
+        var ex = Assert.Throws<ArgumentException>(() => generator.Entry("posixAccount", ParentDn));
+        Assert.Contains("structural", ex.Message);
+    }
+
+    [Fact]
+    public void Non_auxiliary_class_in_auxiliary_list_throws()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 1 };
+        options.AuxiliaryClasses.Add("person"); // structural, not auxiliary
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => generator.Entry("inetOrgPerson", ParentDn));
+        Assert.Contains("auxiliary", ex.Message);
+    }
+
+    [Fact]
+    public void Rdn_attribute_must_be_allowed_by_selected_classes()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 1, RdnAttribute = "uidNumber" };
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => generator.Entry("person", ParentDn));
+        Assert.Contains("uidNumber", ex.Message);
+    }
+
+    [Fact]
+    public void Heuristic_yields_to_incompatible_declared_syntax()
+    {
+        // A custom schema reuses the well-known name "description" with INTEGER
+        // syntax; the free-text heuristic must not win over the declared syntax.
+        var schema = LdapSchema.Parse(
+            "attributetype ( 1.2.3.4.1 NAME 'cn' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )\n" +
+            "attributetype ( 1.2.3.4.2 NAME 'description' EQUALITY integerMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 )\n" +
+            "objectclass ( 1.2.3.4.3 NAME 'testThing' STRUCTURAL MUST ( cn $ description ) )\n");
+        var generator = new SchemaEntryGenerator(schema, new SchemaGeneratorOptions { Seed = 21 });
+
+        var entry = generator.Entry("testThing", ParentDn);
+
+        Assert.True(
+            int.TryParse(entry["description"]!.Values[0].AsString(), NumberStyles.None, CultureInfo.InvariantCulture, out _),
+            "description with INTEGER syntax must get an integer value, not the free-text heuristic");
+    }
+
+    [Fact]
+    public void Nul_in_rdn_value_is_hex_escaped()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 1, RdnAttribute = "cn" };
+        options.ExampleValues["cn"] = ["bad\0name"];
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var entry = generator.Entry("person", ParentDn);
+
+        Assert.StartsWith("cn=bad\\00name,", entry.Dn);
+        Assert.DoesNotContain('\0', entry.Dn);
+    }
 }

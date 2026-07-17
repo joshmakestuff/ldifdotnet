@@ -10,7 +10,10 @@ namespace LdifDotNet.Generator;
 /// Generates fake entries for arbitrary LDAP schemas: MUST attributes are always
 /// filled, MAY attributes per <see cref="SchemaGeneratorOptions.OptionalAttributeFill"/>.
 /// Values come from (in priority order) user-supplied example pools, well-known
-/// attribute-name heuristics, then the attribute's syntax OID.
+/// attribute-name heuristics (only when compatible with the attribute's declared
+/// syntax), then the attribute's syntax OID. Required attributes whose syntax has
+/// no supported generator fall back to free text, which a server may reject;
+/// supply an <see cref="SchemaGeneratorOptions.ExampleValues"/> pool for those.
 /// </summary>
 public sealed class SchemaEntryGenerator
 {
@@ -43,8 +46,18 @@ public sealed class SchemaEntryGenerator
         ArgumentException.ThrowIfNullOrEmpty(objectClassName);
         ArgumentException.ThrowIfNullOrEmpty(parentDn);
 
-        var classes = new List<LdapObjectClass> { ResolveClass(objectClassName) };
-        classes.AddRange(_options.AuxiliaryClasses.Select(ResolveClass));
+        var primary = ResolveClass(objectClassName);
+        if (primary.Kind != LdapObjectClassKind.Structural)
+            throw new ArgumentException($"Object class '{primary.Name}' is {primary.Kind}; the primary class of an entry must be structural.", nameof(objectClassName));
+
+        var classes = new List<LdapObjectClass> { primary };
+        foreach (string auxiliaryName in _options.AuxiliaryClasses)
+        {
+            var auxiliary = ResolveClass(auxiliaryName);
+            if (auxiliary.Kind != LdapObjectClassKind.Auxiliary)
+                throw new InvalidOperationException($"AuxiliaryClasses contains '{auxiliary.Name}', which is {auxiliary.Kind}, not auxiliary.");
+            classes.Add(auxiliary);
+        }
 
         var objectClassValues = ObjectClassChain(classes);
         var required = CollectNames(classes, _schema.RequiredAttributeNames);
@@ -52,7 +65,9 @@ public sealed class SchemaEntryGenerator
             .Where(name => !required.Contains(name, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
-        string rdnAttribute = _options.RdnAttribute ?? PickRdnAttribute(required, optional);
+        string rdnAttribute = _options.RdnAttribute is { } configuredRdn
+            ? ValidateRdnAttribute(configuredRdn, required, optional)
+            : PickRdnAttribute(required, optional);
         string rdnValue = UniqueRdnValue(rdnAttribute, parentDn);
 
         var attributes = new List<LdifAttribute>
@@ -137,6 +152,17 @@ public sealed class SchemaEntryGenerator
         return result;
     }
 
+    private static string ValidateRdnAttribute(string configured, List<string> required, List<string> optional)
+    {
+        if (!required.Contains(configured, StringComparer.OrdinalIgnoreCase)
+            && !optional.Contains(configured, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"RdnAttribute '{configured}' is neither required nor allowed by the selected object classes.");
+        }
+        return configured;
+    }
+
     private static string PickRdnAttribute(List<string> required, List<string> optional)
     {
         foreach (string preferred in new[] { "uid", "cn" })
@@ -169,10 +195,17 @@ public sealed class SchemaEntryGenerator
         if (_options.ExampleValues.TryGetValue(attributeName, out var pool) && pool.Count > 0)
             return LdifValue.FromString(_faker.PickRandom<string>(pool));
 
-        if (HeuristicValue(attributeName) is { } heuristic)
-            return LdifValue.FromString(heuristic);
-
         var (found, syntax) = ResolveSyntax(attributeName);
+
+        // A well-known name only gets its heuristic value when the schema's declared
+        // syntax (if any) accepts it — a custom attribute reusing a familiar name
+        // with an incompatible syntax must not receive a plausible-looking invalid value.
+        if (HeuristicValue(attributeName) is { } heuristic
+            && (syntax is null || HeuristicMatchesSyntax(heuristic, syntax)))
+        {
+            return LdifValue.FromString(heuristic);
+        }
+
         if (syntax is not null)
         {
             if (SyntaxValue(syntax, parentDn) is { } value)
@@ -213,6 +246,42 @@ public sealed class SchemaEntryGenerator
         "userpassword" => _faker.Internet.Password(),
         _ => null,
     };
+
+    /// <summary>
+    /// Whether a heuristic value is lexically valid for the given syntax OID.
+    /// Permissive for free-form syntaxes, strict for structured ones; a syntax we
+    /// cannot judge rejects the heuristic so generation falls through to
+    /// <see cref="SyntaxValue"/> (or is skipped) rather than risk invalid output.
+    /// </summary>
+    private static bool HeuristicMatchesSyntax(string value, string syntax)
+    {
+        if (!syntax.StartsWith(SyntaxPrefix, StringComparison.Ordinal))
+            return true; // non-standard syntax family: heuristic is no worse than free text
+
+        return syntax[SyntaxPrefix.Length..] switch
+        {
+            "15" => true,                                                   // Directory String: any UTF-8
+            "40" => true,                                                   // Octet String: any octets
+            "41" => true,                                                   // Postal Address: dstring lines
+            "26" => value.All(char.IsAscii),                                // IA5 String
+            "27" => IsInteger(value),                                       // INTEGER
+            "7" => value is "TRUE" or "FALSE",                              // Boolean
+            "36" => value.All(c => char.IsAsciiDigit(c) || c == ' '),       // Numeric String
+            "44" or "50" or "22" => value.All(IsPrintableChar),             // Printable / Telephone / Facsimile
+            "11" => value.Length == 2 && value.All(IsPrintableChar),        // Country String
+            _ => false,                                                     // structured syntax we cannot judge
+        };
+    }
+
+    private static bool IsInteger(string value)
+    {
+        int start = value.StartsWith('-') ? 1 : 0;
+        return value.Length > start && value.Skip(start).All(char.IsAsciiDigit);
+    }
+
+    /// <summary>RFC 4517 PrintableCharacter.</summary>
+    private static bool IsPrintableChar(char c) =>
+        char.IsAsciiLetterOrDigit(c) || c is '\'' or '(' or ')' or '+' or ',' or '-' or '.' or '/' or ':' or '?' or '=' or ' ';
 
     /// <summary>Resolves an attribute's syntax OID, walking the SUP chain.</summary>
     private (bool Found, string? Syntax) ResolveSyntax(string attributeName)
