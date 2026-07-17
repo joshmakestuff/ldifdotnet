@@ -49,6 +49,8 @@ jobs:
         run: |
           ls -1 packages/*.nupkg
           test "$(ls -1 packages/*.nupkg | wc -l)" = "3"
+      - name: Consumer smoke test against the packed packages
+        run: dotnet run --project tools/consumer-smoke
 
   differential:
     name: differential vs OpenLDAP
