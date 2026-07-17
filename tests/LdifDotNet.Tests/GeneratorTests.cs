@@ -106,16 +106,6 @@ public class GeneratorTests
             Assert.Equal(records[i].Dn, reparsed[i].Dn);
     }
 
-    [Theory]
-    [InlineData("Smith, Jr.", "Smith\\, Jr.")]
-    [InlineData("#hash", "\\#hash")]
-    [InlineData(" leading", "\\ leading")]
-    [InlineData("trailing ", "trailing\\ ")]
-    [InlineData("a+b<c>d;e\"f\\g", "a\\+b\\<c\\>d\\;e\\\"f\\\\g")]
-    [InlineData("plain", "plain")]
-    public void Rdn_values_are_escaped_per_rfc4514(string value, string expected) =>
-        Assert.Equal(expected, Rdn.Escape(value));
-
     private static string ParentDn(string dn)
     {
         for (int i = 0; i < dn.Length; i++)

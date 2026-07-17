@@ -65,7 +65,7 @@ public sealed class LdifGenerator
         string uid = UniqueUid(givenName, surname);
 
         return new LdifContentRecord(
-            $"uid={Rdn.Escape(uid)},{parentDn}",
+            $"uid={Dn.EscapeValue(uid)},{parentDn}",
             new LdifAttribute("objectClass", "top", "person", "organizationalPerson", "inetOrgPerson"),
             new LdifAttribute("uid", uid),
             new LdifAttribute("cn", commonName),
@@ -106,7 +106,7 @@ public sealed class LdifGenerator
         var members = _faker.PickRandom(memberPool, memberCount);
 
         return new LdifContentRecord(
-            $"cn={Rdn.Escape(name)},{parentDn}",
+            $"cn={Dn.EscapeValue(name)},{parentDn}",
             new LdifAttribute("objectClass", "top", "groupOfNames"),
             new LdifAttribute("cn", name),
             new LdifAttribute("description", _faker.Company.CatchPhrase()),
@@ -155,7 +155,7 @@ public sealed class LdifGenerator
 
     private static LdifContentRecord OrganizationalUnit(string name, string parentDn) =>
         new(
-            $"ou={Rdn.Escape(name)},{parentDn}",
+            $"ou={Dn.EscapeValue(name)},{parentDn}",
             new LdifAttribute("objectClass", "top", "organizationalUnit"),
             new LdifAttribute("ou", name));
 

@@ -1,5 +1,19 @@
 namespace LdifDotNet
 {
+    public readonly struct AttributeTypeAndValue : System.IEquatable<LdifDotNet.AttributeTypeAndValue>
+    {
+        public AttributeTypeAndValue(string Type, string Value) { }
+        public string Type { get; init; }
+        public string Value { get; init; }
+    }
+    public static class Dn
+    {
+        public static string Combine(params string[] parts) { }
+        public static string EscapeValue(string value) { }
+        public static System.Collections.Generic.IReadOnlyList<LdifDotNet.RelativeDistinguishedName> Parse(string distinguishedName) { }
+        public static string Rdn(string attributeType, string value) { }
+        public static string UnescapeValue(string value) { }
+    }
     public sealed class LdifAddRecord : LdifDotNet.LdifChangeRecord
     {
         public LdifAddRecord(string dn, params LdifDotNet.LdifAttribute[] attributes) { }
@@ -112,5 +126,14 @@ namespace LdifDotNet
         public LdifWriterOptions() { }
         public bool IncludeVersionLine { get; init; }
         public int? WrapColumn { get; init; }
+    }
+    public sealed class RelativeDistinguishedName
+    {
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.AttributeTypeAndValue> Attributes { get; }
+        public bool IsMultiValued { get; }
+        public LdifDotNet.AttributeTypeAndValue SoleAttribute { get; }
+        public string Type { get; }
+        public string Value { get; }
+        public override string ToString() { }
     }
 }
