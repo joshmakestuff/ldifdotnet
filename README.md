@@ -40,4 +40,5 @@ var people = new SchemaEntryGenerator(schema, options).Entries("inetOrgPerson", 
 ```
 
 Targets .NET 10 (current LTS). Licensed under the
-[OpenLDAP Public License v2.8](LICENSE) (SPDX: `OLDAP-2.8`).
+[MIT License](LICENSE) (SPDX: `MIT`). Bundled third-party test fixtures retain
+their own licenses — see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
