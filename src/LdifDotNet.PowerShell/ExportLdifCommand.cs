@@ -20,8 +20,9 @@ public sealed class ExportLdifCommand : PSCmdlet, IDisposable
     [Parameter(Mandatory = true, Position = 0)]
     public string Path { get; set; } = "";
 
+    /// <summary>Records to write: LdifRecord objects, or hashtables/PSCustomObjects with a 'dn' key.</summary>
     [Parameter(Mandatory = true, ValueFromPipeline = true)]
-    public LdifRecord[] InputObject { get; set; } = [];
+    public object[] InputObject { get; set; } = [];
 
     /// <summary>Disable folding entirely (like ldapsearch -o ldif-wrap=no).</summary>
     [Parameter]
@@ -90,8 +91,8 @@ public sealed class ExportLdifCommand : PSCmdlet, IDisposable
     {
         if (_writer is null)
             return; // -WhatIf, or the user declined confirmation
-        foreach (var record in InputObject)
-            _writer.WriteRecord(record);
+        foreach (object input in InputObject)
+            _writer.WriteRecord(LdifInput.ToRecord(input));
     }
 
     protected override void EndProcessing()
