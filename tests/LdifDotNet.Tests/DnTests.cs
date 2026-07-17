@@ -148,10 +148,24 @@ public class DnTests
         Assert.Empty(Dn.Parse(dn));
 
     [Theory]
-    [InlineData("novalue,dc=x")]
-    [InlineData("=orphan,dc=x")]
+    [InlineData("novalue,dc=x")]     // no '='
+    [InlineData("=orphan,dc=x")]     // empty type
+    [InlineData("cn=a,,dc=x")]       // empty RDN
+    [InlineData(",cn=a")]            // leading comma
+    [InlineData("cn=a,")]            // trailing comma
+    [InlineData("cn=a++sn=b")]       // empty '+' component
+    [InlineData("not valid=x")]      // space in type
+    [InlineData("2cn=x")]            // digit-led non-OID type
+    [InlineData("cn;lang-en=x")]     // ';' is not a descr char
     public void Parse_rejects_malformed_components(string dn) =>
         Assert.Throws<ArgumentException>(() => Dn.Parse(dn));
+
+    [Theory]
+    [InlineData("cn=x", "cn")]
+    [InlineData("cn-2=x", "cn-2")]
+    [InlineData("1.3.6.1.4.1.1466.0=x", "1.3.6.1.4.1.1466.0")]
+    public void Parse_accepts_valid_attribute_types(string dn, string expectedType) =>
+        Assert.Equal(expectedType, Dn.Parse(dn)[0].Type);
 
     [Fact]
     public void Rdn_round_trips_through_ToString()
