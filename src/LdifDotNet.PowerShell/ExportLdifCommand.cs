@@ -55,9 +55,35 @@ public sealed class ExportLdifCommand : PSCmdlet, IDisposable
             WrapColumn = NoWrap.IsPresent ? null : 76,
             IncludeVersionLine = !NoVersionLine.IsPresent,
         };
-        _tempPath = _destination + ".tmp";
-        _stream = new StreamWriter(_tempPath);
+        _stream = CreateTempSibling(_destination, out _tempPath);
         _writer = new LdifWriter(_stream, options);
+    }
+
+    /// <summary>
+    /// Creates a uniquely named temporary file next to the destination and opens it
+    /// with <see cref="FileMode.CreateNew"/>, so it can never truncate an existing
+    /// file and concurrent exports never share a path. Same-directory placement keeps
+    /// the final replace on one volume (atomic).
+    /// </summary>
+    private static StreamWriter CreateTempSibling(string destination, out string tempPath)
+    {
+        string directory = System.IO.Path.GetDirectoryName(destination) ?? ".";
+        string name = System.IO.Path.GetFileName(destination);
+        for (int attempt = 0; ; attempt++)
+        {
+            string candidate = System.IO.Path.Combine(
+                directory, $"{name}.{System.IO.Path.GetRandomFileName()}.tmp");
+            try
+            {
+                var stream = new FileStream(candidate, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                tempPath = candidate;
+                return new StreamWriter(stream);
+            }
+            catch (IOException) when (File.Exists(candidate) && attempt < 8)
+            {
+                // Astronomically unlikely name collision; try another name.
+            }
+        }
     }
 
     protected override void ProcessRecord()
@@ -73,7 +99,29 @@ public sealed class ExportLdifCommand : PSCmdlet, IDisposable
         if (_writer is null)
             return;
         CloseStreams();
-        File.Move(_tempPath!, _destination!, overwrite: true);
+
+        if (NoClobber.IsPresent)
+        {
+            // Non-overwriting move: atomically fails if the destination was created
+            // while the pipeline ran, closing the TOCTOU gap in the -NoClobber check.
+            try
+            {
+                File.Move(_tempPath!, _destination!);
+            }
+            catch (IOException) when (File.Exists(_destination))
+            {
+                ThrowTerminatingError(new ErrorRecord(
+                    new IOException($"The file '{_destination}' already exists and -NoClobber was specified."),
+                    "FileExists",
+                    ErrorCategory.ResourceExists,
+                    _destination));
+            }
+        }
+        else
+        {
+            File.Move(_tempPath!, _destination!, overwrite: true);
+        }
+
         _tempPath = null;
     }
 
