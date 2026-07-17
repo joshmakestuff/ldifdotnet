@@ -39,7 +39,7 @@ public class DnTests
         Assert.Equal("Before\rAfter", Dn.UnescapeValue("Before\\0dAfter"));
 
     [Fact]
-    public void UnescapeValue_returns_hexstring_verbatim() =>
+    public void UnescapeValue_does_not_interpret_leading_hash() =>
         Assert.Equal("#04024869", Dn.UnescapeValue("#04024869"));
 
     [Theory]
@@ -113,12 +113,16 @@ public class DnTests
         Assert.Equal("Before\rAfter", Dn.Parse("CN=Before\\0dAfter,DC=example,DC=net")[0].Value);
 
     [Fact]
-    public void Parse_keeps_hexstring_value_verbatim()
-    {
-        var rdns = Dn.Parse("1.3.6.1.4.1.1466.0=#04024869");
+    public void Parse_rejects_ber_hexstring_value() =>
+        Assert.Throws<ArgumentException>(() => Dn.Parse("1.3.6.1.4.1.1466.0=#04024869"));
 
-        Assert.Equal("1.3.6.1.4.1.1466.0", rdns[0].Type);
-        Assert.Equal("#04024869", rdns[0].Value);
+    [Fact]
+    public void Parse_accepts_escaped_leading_hash()
+    {
+        var rdns = Dn.Parse("cn=\\#literal,dc=x");
+
+        Assert.Equal("#literal", rdns[0].Value);
+        Assert.Equal("cn=\\#literal", rdns[0].ToString());
     }
 
     [Fact]

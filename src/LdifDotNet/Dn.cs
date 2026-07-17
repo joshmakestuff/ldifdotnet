@@ -157,6 +157,15 @@ public static class Dn
                     throw new ArgumentException($"DN component '{trimmed}' has an empty attribute type.", nameof(distinguishedName));
 
                 string rawValue = TrimUnescaped(trimmed[(eq + 1)..]);
+                if (rawValue.StartsWith('#'))
+                {
+                    // RFC 4514 hexstring: a BER-encoded value. Decoding BER is out of
+                    // scope; supporting it half-way would silently corrupt the value on
+                    // reserialize (the '#' would be escaped), so reject it explicitly.
+                    throw new ArgumentException(
+                        $"DN component '{trimmed}' uses a BER hexstring value ('#...'), which is not supported. Escape the leading '#' if it is literal.",
+                        nameof(distinguishedName));
+                }
                 attributes.Add(new AttributeTypeAndValue(type, UnescapeValue(rawValue)));
             }
 
