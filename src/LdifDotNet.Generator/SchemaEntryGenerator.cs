@@ -92,7 +92,7 @@ public sealed class SchemaEntryGenerator
                 attributes.Add(new LdifAttribute(name, value));
         }
 
-        return new LdifContentRecord($"{rdnAttribute}={Rdn.Escape(rdnValue)},{parentDn}", attributes);
+        return new LdifContentRecord($"{rdnAttribute}={Dn.EscapeValue(rdnValue)},{parentDn}", attributes);
 
         static bool IsHandled(string name, string rdnAttribute) =>
             name.Equals("objectClass", StringComparison.OrdinalIgnoreCase)
