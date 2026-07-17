@@ -110,7 +110,7 @@ namespace LdifDotNet
     public sealed class LdifWriterOptions
     {
         public LdifWriterOptions() { }
-        public bool IncludeVersionLine { get; set; }
-        public int? WrapColumn { get; set; }
+        public bool IncludeVersionLine { get; init; }
+        public int? WrapColumn { get; init; }
     }
 }

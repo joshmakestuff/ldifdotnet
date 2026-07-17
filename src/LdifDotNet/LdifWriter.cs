@@ -17,16 +17,19 @@ namespace LdifDotNet;
 public sealed class LdifWriter : IDisposable
 {
     private readonly TextWriter _writer;
-    private readonly LdifWriterOptions _options;
+    private readonly int? _wrapColumn;
+    private readonly bool _includeVersionLine;
     private bool _firstRecord = true;
     private bool? _changeDocument;
 
     public LdifWriter(TextWriter writer, LdifWriterOptions? options = null)
     {
         _writer = writer ?? throw new ArgumentNullException(nameof(writer));
-        _options = options ?? new LdifWriterOptions();
-        if (_options.WrapColumn is { } wrap && wrap < 2)
+        options ??= new LdifWriterOptions();
+        if (options.WrapColumn is { } wrap && wrap < 2)
             throw new ArgumentOutOfRangeException(nameof(options), "WrapColumn must be at least 2, or null to disable folding.");
+        _wrapColumn = options.WrapColumn;
+        _includeVersionLine = options.IncludeVersionLine;
     }
 
     public void WriteRecord(LdifRecord record)
@@ -44,7 +47,7 @@ public sealed class LdifWriter : IDisposable
 
         if (_firstRecord)
         {
-            if (_options.IncludeVersionLine)
+            if (_includeVersionLine)
                 WriteFolded("version: 1");
             _firstRecord = false;
         }
@@ -302,13 +305,16 @@ public sealed class LdifWriter : IDisposable
 
     private void WriteFolded(string line)
     {
-        if (_options.WrapColumn is not { } wrap || line.Length <= wrap)
+        if (_wrapColumn is not { } wrap || line.Length <= wrap)
         {
             _writer.Write(line);
             _writer.Write('\n');
             return;
         }
 
+        // The constructor guarantees wrap >= 2; the loop below relies on a
+        // positive increment (wrap - 1) for forward progress.
+        System.Diagnostics.Debug.Assert(wrap >= 2, "WrapColumn snapshot must be >= 2.");
         _writer.Write(line.AsSpan(0, wrap));
         _writer.Write('\n');
         for (int position = wrap; position < line.Length; position += wrap - 1)
@@ -320,7 +326,11 @@ public sealed class LdifWriter : IDisposable
     }
 }
 
-/// <summary>Options controlling LDIF output.</summary>
+/// <summary>
+/// Options controlling LDIF output. Values are snapshotted by the
+/// <see cref="LdifWriter"/> constructor; changes after construction have no
+/// effect on an existing writer.
+/// </summary>
 public sealed class LdifWriterOptions
 {
     /// <summary>
@@ -328,8 +338,8 @@ public sealed class LdifWriterOptions
     /// Set to null to disable folding entirely (like ldapsearch -o ldif-wrap=no);
     /// such output is not strictly RFC-conformant but is widely accepted.
     /// </summary>
-    public int? WrapColumn { get; set; } = 76;
+    public int? WrapColumn { get; init; } = 76;
 
     /// <summary>Whether to emit "version: 1" before the first record. Default true.</summary>
-    public bool IncludeVersionLine { get; set; } = true;
+    public bool IncludeVersionLine { get; init; } = true;
 }

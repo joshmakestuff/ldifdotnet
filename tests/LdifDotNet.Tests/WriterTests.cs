@@ -113,6 +113,16 @@ public class WriterTests
         Assert.Contains($"description: {longValue}\n", ldif);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void Rejects_wrap_column_below_two(int wrap)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new LdifWriter(new StringWriter(), new LdifWriterOptions { WrapColumn = wrap }));
+    }
+
     [Fact]
     public void Version_line_can_be_disabled()
     {
