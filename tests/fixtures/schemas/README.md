@@ -12,4 +12,4 @@ Fetched by `tools/get-schemas.ps1` — exact pins and SHA-256 checksums live the
   - `openssh-lpk.schema` — AndriiGrytsenko/openssh-ldap-publickey
 
 License review of `contrib/` sources is required before this repo goes public
-(tracked on issue #5).
+(tracked on issue #4, the go-public packaging gate).
