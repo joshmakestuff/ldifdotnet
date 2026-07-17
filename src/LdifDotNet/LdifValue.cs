@@ -60,6 +60,10 @@ public readonly struct LdifValue : IEquatable<LdifValue>
 
     public override bool Equals(object? obj) => obj is LdifValue other && Equals(other);
 
+    public static bool operator ==(LdifValue left, LdifValue right) => left.Equals(right);
+
+    public static bool operator !=(LdifValue left, LdifValue right) => !left.Equals(right);
+
     public override int GetHashCode()
     {
         if (IsUrl)

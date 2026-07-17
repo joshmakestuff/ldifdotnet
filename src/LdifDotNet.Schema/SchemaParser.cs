@@ -228,7 +228,7 @@ internal sealed class SchemaParser
         }
 
         /// <summary>A single value or a parenthesized list ('$'-separated or space-separated).</summary>
-        public IReadOnlyList<string> ReadValueList()
+        public List<string> ReadValueList()
         {
             if (Peek().Kind != TokenKind.LParen)
                 return [ReadValue()];

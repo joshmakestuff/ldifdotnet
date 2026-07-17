@@ -96,6 +96,8 @@ namespace LdifDotNet
         public static LdifDotNet.LdifValue FromString(string value) { }
         public static LdifDotNet.LdifValue FromUrl(System.Uri url) { }
         public static LdifDotNet.LdifValue op_Implicit(string value) { }
+        public static bool operator !=(LdifDotNet.LdifValue left, LdifDotNet.LdifValue right) { }
+        public static bool operator ==(LdifDotNet.LdifValue left, LdifDotNet.LdifValue right) { }
     }
     public sealed class LdifWriter : System.IDisposable
     {
