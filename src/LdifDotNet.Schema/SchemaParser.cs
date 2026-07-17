@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 
 namespace LdifDotNet.Schema;
 
@@ -260,6 +261,39 @@ internal sealed class SchemaParser
         public LdapSchemaParseException Error(string message) =>
             new($"line {lineNumber}: {message}", lineNumber);
 
+        /// <summary>
+        /// Decodes RFC 4512 qdstring escapes: "\27" is an apostrophe and
+        /// "\5C"/"\5c" a backslash. These are the only escapes the grammar
+        /// defines; any other use of '\' in a quoted string is malformed.
+        /// </summary>
+        private string DecodeQuotedString(string raw)
+        {
+            if (!raw.Contains('\\', StringComparison.Ordinal))
+                return raw;
+
+            var result = new StringBuilder(raw.Length);
+            for (int i = 0; i < raw.Length; i++)
+            {
+                char c = raw[i];
+                if (c != '\\')
+                {
+                    result.Append(c);
+                    continue;
+                }
+                if (i + 2 >= raw.Length)
+                    throw Error("truncated escape sequence in quoted string");
+                string hex = raw.Substring(i + 1, 2);
+                result.Append(hex switch
+                {
+                    "27" => '\'',
+                    "5C" or "5c" => '\\',
+                    _ => throw Error($"invalid escape '\\{hex}' in quoted string (RFC 4512 defines \\27 and \\5C)"),
+                });
+                i += 2;
+            }
+            return result.ToString();
+        }
+
         private Token Read()
         {
             while (_position < text.Length && char.IsWhiteSpace(text[_position]))
@@ -283,7 +317,7 @@ internal sealed class SchemaParser
                     int close = text.IndexOf('\'', _position + 1);
                     if (close < 0)
                         throw Error("unterminated quoted string");
-                    string quoted = text[(_position + 1)..close];
+                    string quoted = DecodeQuotedString(text[(_position + 1)..close]);
                     _position = close + 1;
                     return new Token(TokenKind.Quoted, quoted);
                 default:

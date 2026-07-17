@@ -30,6 +30,38 @@ public class SchemaParserTests
         Assert.All(schema.ObjectClasses, c => Assert.NotEqual("", c.Oid));
     }
 
+    [Theory]
+    [InlineData(@"owner\27s path\5Croot", "owner's path\\root")]  // RFC 4512 QQ + QS (upper)
+    [InlineData(@"lower\5ccase", "lower\\case")]                  // QS, lower-case hex
+    [InlineData(@"no escapes here", "no escapes here")]
+    public void Quoted_string_escapes_are_decoded(string escaped, string expected)
+    {
+        var schema = LdapSchema.Parse(
+            $"attributetype ( 1.2.3.4 NAME 'testAttr' DESC '{escaped}' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )");
+
+        Assert.Equal(expected, schema.AttributeTypes[0].Description);
+    }
+
+    [Fact]
+    public void Extension_values_decode_quoted_string_escapes()
+    {
+        var schema = LdapSchema.Parse(
+            @"attributetype ( 1.2.3.4 NAME 'testAttr' X-ORIGIN 'somebody\27s draft' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )");
+
+        Assert.Equal("somebody's draft", schema.AttributeTypes[0].Extensions["X-ORIGIN"][0]);
+    }
+
+    [Theory]
+    [InlineData(@"bad \00 escape")]   // hex pair outside the RFC 4512 set
+    [InlineData(@"bad \x escape")]    // not a hex pair
+    [InlineData(@"truncated \2")]     // one char after the backslash
+    [InlineData(@"truncated \")]      // nothing after the backslash
+    public void Malformed_quoted_string_escapes_are_rejected(string value)
+    {
+        Assert.Throws<LdapSchemaParseException>(() => LdapSchema.Parse(
+            $"attributetype ( 1.2.3.4 NAME 'testAttr' DESC '{value}' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )"));
+    }
+
     [Fact]
     public void Core_schema_person_class_is_parsed_correctly()
     {
