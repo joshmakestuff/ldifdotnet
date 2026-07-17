@@ -10,6 +10,7 @@ public sealed class LdifGenerator
 {
     private readonly LdifGeneratorOptions _options;
     private readonly Faker _faker;
+    private readonly IReadOnlyList<RelativeDistinguishedName> _baseRdns;
     private readonly string _mailDomain;
     private readonly HashSet<string> _usedUids = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _usedGroupNames = new(StringComparer.OrdinalIgnoreCase);
@@ -22,11 +23,11 @@ public sealed class LdifGenerator
         if (_options.Seed is { } seed)
             _faker.Random = new Randomizer(seed);
 
-        var dcComponents = _options.BaseDn
-            .Split(',')
-            .Select(part => part.Trim())
-            .Where(part => part.StartsWith("dc=", StringComparison.OrdinalIgnoreCase))
-            .Select(part => part[3..])
+        // Parse the base DN once, honoring RFC 4514 escaping and multi-valued RDNs.
+        _baseRdns = Dn.Parse(_options.BaseDn);
+        var dcComponents = _baseRdns
+            .Where(rdn => !rdn.IsMultiValued && rdn.Type.Equals("dc", StringComparison.OrdinalIgnoreCase))
+            .Select(rdn => rdn.Value)
             .ToList();
         _mailDomain = dcComponents.Count > 0
             ? string.Join('.', dcComponents)
@@ -126,13 +127,12 @@ public sealed class LdifGenerator
     private LdifContentRecord BaseEntry()
     {
         string baseDn = _options.BaseDn;
-        int comma = baseDn.IndexOf(',', StringComparison.Ordinal);
-        string firstRdn = comma < 0 ? baseDn : baseDn[..comma];
-        int equals = firstRdn.IndexOf('=', StringComparison.Ordinal);
-        if (equals <= 0)
-            throw new InvalidOperationException($"Base DN '{baseDn}' does not start with a valid RDN.");
-        string attribute = firstRdn[..equals].Trim();
-        string value = firstRdn[(equals + 1)..].Trim();
+        if (_baseRdns.Count == 0)
+            throw new InvalidOperationException($"Base DN '{baseDn}' is empty.");
+        if (_baseRdns[0].IsMultiValued)
+            throw new InvalidOperationException($"Base DN '{baseDn}' has a multi-valued first RDN, which is not supported.");
+        string attribute = _baseRdns[0].Type;
+        string value = _baseRdns[0].Value;
 
         return attribute.ToLowerInvariant() switch
         {
