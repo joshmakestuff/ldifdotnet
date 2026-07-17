@@ -241,6 +241,77 @@ public class PowerShellModuleTests
     }
 
     [PwshFact]
+    public void Authors_ldif_from_a_hashtable()
+    {
+        string output = RunPwsh("""
+            Import-Module $args[0]
+            $ldif = [ordered]@{ dn='cn=Ann,dc=x'; objectClass='top','person'; cn='Ann'; sn='Smith' } |
+                ConvertTo-Ldif -NoVersionLine
+            $ldif
+            "roundtrip=$(@($ldif | ConvertFrom-Ldif).Count)"
+            "rtcn=$(($ldif | ConvertFrom-Ldif).cn)"
+            """, ManifestPath);
+
+        Assert.Contains("dn: cn=Ann,dc=x", output);
+        Assert.Contains("objectClass: top", output);   // array -> multiple lines
+        Assert.Contains("objectClass: person", output);
+        Assert.Contains("cn: Ann", output);
+        Assert.Contains("sn: Smith", output);
+        Assert.Contains("roundtrip=1", output);
+        Assert.Contains("rtcn=Ann", output);
+    }
+
+    [PwshFact]
+    public void Authors_binary_and_url_values_from_a_hashtable()
+    {
+        string output = RunPwsh("""
+            Import-Module $args[0]
+            [ordered]@{ dn='dc=x'; jpegPhoto=[byte[]](1,2,3); ref=[uri]'file:///p.jpg' } |
+                ConvertTo-Ldif -NoVersionLine
+            """, ManifestPath);
+
+        Assert.Contains("jpegPhoto:: AQID", output);      // byte[] -> base64
+        Assert.Contains("ref:< file:///p.jpg", output);   // Uri -> URL reference
+    }
+
+    [PwshFact]
+    public void Authors_ldif_from_a_pscustomobject()
+    {
+        string output = RunPwsh("""
+            Import-Module $args[0]
+            [pscustomobject]@{ dn='dc=x'; dc='x' } | ConvertTo-Ldif -NoVersionLine
+            """, ManifestPath);
+
+        Assert.Contains("dn: dc=x", output);
+        Assert.Contains("dc: x", output);
+    }
+
+    [PwshFact]
+    public void Authoring_without_a_dn_key_fails()
+    {
+        string output = RunPwsh("""
+            Import-Module $args[0]
+            try { @{ cn='x' } | ConvertTo-Ldif | Out-Null } catch { "err=True" }
+            """, ManifestPath);
+
+        Assert.Contains("err=True", output);
+    }
+
+    [PwshFact]
+    public void Friendly_view_round_trips_through_ConvertTo()
+    {
+        // Piping the read-side view back in must use the underlying record (not rebuild
+        // from properties), so Barbara's three cn values survive intact.
+        string output = RunPwsh("""
+            Import-Module $args[0]
+            $ldif = Import-Ldif $args[1] | ConvertTo-Ldif -NoVersionLine
+            "cncount=$(([regex]::Matches($ldif, '(?m)^cn: ')).Count)"
+            """, ManifestPath, Fixtures.PathOf("rfc2849", "example1.ldif"));
+
+        Assert.Contains("cncount=4", output);  // Barbara 3 + Bjorn 1
+    }
+
+    [PwshFact]
     public void Change_records_surface_as_typed_objects()
     {
         string output = RunPwsh("""

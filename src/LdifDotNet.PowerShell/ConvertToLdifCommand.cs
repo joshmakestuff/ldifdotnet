@@ -11,8 +11,9 @@ public sealed class ConvertToLdifCommand : PSCmdlet
 {
     private readonly List<LdifRecord> _records = [];
 
+    /// <summary>Records to serialize: LdifRecord objects, or hashtables/PSCustomObjects with a 'dn' key.</summary>
     [Parameter(Mandatory = true, Position = 0, ValueFromPipeline = true)]
-    public LdifRecord[] InputObject { get; set; } = [];
+    public object[] InputObject { get; set; } = [];
 
     /// <summary>Column at which output lines are folded. Default 76 per RFC 2849.</summary>
     [Parameter]
@@ -29,7 +30,8 @@ public sealed class ConvertToLdifCommand : PSCmdlet
 
     protected override void ProcessRecord()
     {
-        _records.AddRange(InputObject);
+        foreach (object input in InputObject)
+            _records.Add(LdifInput.ToRecord(input));
     }
 
     protected override void EndProcessing()
