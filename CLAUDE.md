@@ -10,6 +10,8 @@ PowerShell 7+ only.
 - Build and test: `dotnet test`
 - Refresh the OpenLDAP fixture corpus: `./tools/get-openldap-fixtures.ps1`
   (release tag is pinned inside the script)
+- Differential tests against real OpenLDAP: skipped unless `LDIF_DIFFERENTIAL=1`
+  and slapd tools are installed (the Linux CI job does this)
 
 ## Invariants — mechanically enforced, do not weaken
 
