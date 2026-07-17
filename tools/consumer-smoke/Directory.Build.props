@@ -1,0 +1,4 @@
+<!-- Intentionally empty: stops inheritance of the repository's build props so
+     this project consumes the packages exactly like a clean external consumer. -->
+<Project>
+</Project>

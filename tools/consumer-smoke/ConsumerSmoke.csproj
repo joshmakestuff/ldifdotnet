@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Floating versions resolve to whatever was just packed into ../../packages;
+         nuget.config maps LdifDotNet* exclusively to that local feed. -->
+    <PackageReference Include="LdifDotNet" Version="*-*" />
+    <PackageReference Include="LdifDotNet.Schema" Version="*-*" />
+    <PackageReference Include="LdifDotNet.Generator" Version="*-*" />
+  </ItemGroup>
+
+</Project>
