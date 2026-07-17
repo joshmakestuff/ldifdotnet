@@ -49,6 +49,15 @@ public class DnTests
     public void UnescapeValue_rejects_malformed_escapes(string value) =>
         Assert.Throws<ArgumentException>(() => Dn.UnescapeValue(value));
 
+    [Theory]
+    [InlineData("\\FF")]              // 0xFF is never valid UTF-8
+    [InlineData("\\C4")]              // truncated 2-byte sequence
+    [InlineData("\\ED\\A0\\80")]      // UTF-16 surrogate U+D800
+    [InlineData("\\C0\\80")]          // overlong encoding of NUL
+    [InlineData("\\F5\\80\\80\\80")]  // beyond U+10FFFF
+    public void UnescapeValue_rejects_invalid_utf8(string value) =>
+        Assert.Throws<ArgumentException>(() => Dn.UnescapeValue(value));
+
     [Fact]
     public void Rdn_escapes_the_value() =>
         Assert.Equal("cn=Smith\\, Jr.", Dn.Rdn("cn", "Smith, Jr."));
