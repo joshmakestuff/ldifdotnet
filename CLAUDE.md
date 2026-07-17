@@ -29,6 +29,11 @@ current LTS only (net10.0, C# 14); the PowerShell module requires pwsh 7.6+
 - Reader is tolerant of input (LF or CRLF, trailing whitespace); writer emits
   strictly RFC-conformant output.
 - `TreatWarningsAsErrors` is on. CI must be green on ubuntu/windows/macos.
+- Code style is spec: `.editorconfig` + `EnforceCodeStyleInBuild` make the
+  warning-severity style rules build errors. The enforced set is deliberately
+  only what the codebase fully satisfies; escalate a suggestion to warning only
+  after making the whole codebase comply. `.ldif`/`.schema` fixtures are exempt
+  from whitespace normalization — trailing spaces there are RFC-meaningful.
 - Cross-platform is an invariant, enforced two ways: the full suite runs on all
   three OSes in CI, and .NET analyzers run as errors (`AnalysisLevel
   latest-recommended` in Directory.Build.props), including platform-compat

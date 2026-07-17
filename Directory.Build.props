@@ -8,6 +8,8 @@
     <!-- Cross-platform is an invariant: platform-compat analyzers (CA1416 etc.)
          fail the build on OS-specific API use. See CLAUDE.md. -->
     <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- Style is spec: .editorconfig rules at warning severity fail the build. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
 </Project>
