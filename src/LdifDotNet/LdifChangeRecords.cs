@@ -1,3 +1,5 @@
+#pragma warning disable MA0048 // Deliberate: this file groups the change-record family
+
 namespace LdifDotNet;
 
 /// <summary>Base type for change records (changetype: add/delete/modify/moddn).</summary>

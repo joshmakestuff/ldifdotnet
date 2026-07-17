@@ -1,3 +1,5 @@
+#pragma warning disable MA0048 // Deliberate: the generator's options type is colocated with it
+
 using System.Globalization;
 using Bogus;
 using LdifDotNet.Schema;
@@ -93,7 +95,7 @@ public sealed class SchemaEntryGenerator
 
     private LdapObjectClass ResolveClass(string name) =>
         _schema.FindObjectClass(name)
-        ?? throw new ArgumentException($"Object class '{name}' is not defined in the schema.");
+        ?? throw new ArgumentException($"Object class '{name}' is not defined in the schema.", nameof(name));
 
     /// <summary>Superior-chain object class names, most-general first (top, ..., class, auxiliaries).</summary>
     private List<string> ObjectClassChain(List<LdapObjectClass> classes)

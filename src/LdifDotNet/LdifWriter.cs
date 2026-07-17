@@ -1,3 +1,5 @@
+#pragma warning disable MA0048 // Deliberate: the writer's options type is colocated with it
+
 using System.Text;
 
 namespace LdifDotNet;

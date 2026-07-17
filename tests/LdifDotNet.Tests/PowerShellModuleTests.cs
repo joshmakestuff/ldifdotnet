@@ -1,3 +1,5 @@
+#pragma warning disable MA0048 // Deliberate: the gating attribute is colocated with the tests it gates
+
 using System.Diagnostics;
 
 namespace LdifDotNet.Tests;
@@ -127,6 +129,7 @@ public class PowerShellModuleTests
         {
             var startInfo = new ProcessStartInfo(PwshPath!)
             {
+                UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             };

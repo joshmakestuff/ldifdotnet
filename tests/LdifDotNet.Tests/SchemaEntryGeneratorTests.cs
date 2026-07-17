@@ -1,3 +1,4 @@
+using System.Globalization;
 using LdifDotNet.Generator;
 using LdifDotNet.Schema;
 
@@ -87,7 +88,7 @@ public class SchemaEntryGeneratorTests
 
         var affiliations = entries
             .Select(e => e["eduPersonAffiliation"]!.Values[0].AsString())
-            .Distinct()
+            .Distinct(StringComparer.Ordinal)
             .ToList();
         Assert.All(affiliations, a => Assert.Contains(a, (string[])["faculty", "student", "staff"]));
         Assert.True(affiliations.Count > 1, "expected the pool to be sampled, not a single value");
@@ -104,8 +105,12 @@ public class SchemaEntryGeneratorTests
         var entry = generator.Entry("account", ParentDn);
 
         Assert.StartsWith("uid=", entry.Dn);
-        Assert.True(int.TryParse(entry["uidNumber"]!.Values[0].AsString(), out _), "uidNumber must be an integer");
-        Assert.True(int.TryParse(entry["gidNumber"]!.Values[0].AsString(), out _), "gidNumber must be an integer");
+        Assert.True(
+            int.TryParse(entry["uidNumber"]!.Values[0].AsString(), NumberStyles.None, CultureInfo.InvariantCulture, out _),
+            "uidNumber must be an integer");
+        Assert.True(
+            int.TryParse(entry["gidNumber"]!.Values[0].AsString(), NumberStyles.None, CultureInfo.InvariantCulture, out _),
+            "gidNumber must be an integer");
         Assert.StartsWith("/", entry["homeDirectory"]!.Values[0].AsString());
     }
 
