@@ -5,7 +5,7 @@ namespace LdifDotNet.Tests;
 /// <summary>Golden tests: the worked examples from RFC 2849 itself.</summary>
 public class RfcExampleTests
 {
-    private static IReadOnlyList<LdifRecord> ReadExample(int number) =>
+    private static List<LdifRecord> ReadExample(int number) =>
         LdifReader.ReadFile(Fixtures.PathOf("rfc2849", $"example{number}.ldif")).ToList();
 
     [Fact]

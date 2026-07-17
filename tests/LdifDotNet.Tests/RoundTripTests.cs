@@ -33,8 +33,8 @@ public class RoundTripTests
     public void Fixture_discovery_finds_both_corpora()
     {
         var files = Fixtures.AllLdifFiles().ToList();
-        Assert.Contains(files, f => f.StartsWith("rfc2849"));
-        Assert.Contains(files, f => f.StartsWith("openldap"));
+        Assert.Contains(files, f => f.StartsWith("rfc2849", StringComparison.Ordinal));
+        Assert.Contains(files, f => f.StartsWith("openldap", StringComparison.Ordinal));
         Assert.True(files.Count > 40, $"expected both corpora, found only {files.Count} files");
     }
 

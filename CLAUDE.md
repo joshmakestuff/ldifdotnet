@@ -25,6 +25,15 @@ PowerShell 7+ only.
 - Reader is tolerant of input (LF or CRLF, trailing whitespace); writer emits
   strictly RFC-conformant output.
 - `TreatWarningsAsErrors` is on. CI must be green on ubuntu/windows/macos.
+- Cross-platform is an invariant, enforced two ways: the full suite runs on all
+  three OSes in CI, and .NET analyzers run as errors (`AnalysisLevel
+  latest-recommended` in Directory.Build.props), including platform-compat
+  (CA1416) and locale-safety rules (CA1305/CA1310 — ordinal comparisons,
+  invariant formatting). Never assume path separators or OS file locations in
+  product code; build paths with Path.Combine. The differential tests' unix
+  defaults (`/etc/ldap/schema` etc.) are the one deliberate exception — they are
+  Linux-gated and env-overridable. Unix-looking strings in generator output
+  (homeDirectory, loginShell) are LDAP attribute values, not filesystem paths.
 
 ## Working rules
 

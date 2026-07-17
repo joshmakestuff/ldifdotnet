@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bogus;
 using LdifDotNet.Schema;
 
@@ -204,7 +205,7 @@ public sealed class SchemaEntryGenerator
         "description" => _faker.Company.CatchPhrase(),
         "title" => _faker.Name.JobTitle(),
         "employeenumber" => _faker.Random.ReplaceNumbers("######"),
-        "uidnumber" or "gidnumber" => _faker.Random.Int(1000, 60000).ToString(),
+        "uidnumber" or "gidnumber" => _faker.Random.Int(1000, 60000).ToString(CultureInfo.InvariantCulture),
         "homedirectory" => $"/home/{SanitizeUid(_faker.Internet.UserName().ToLowerInvariant())}",
         "loginshell" => _faker.PickRandom("/bin/bash", "/bin/zsh", "/bin/sh"),
         "userpassword" => _faker.Internet.Password(),
@@ -236,7 +237,7 @@ public sealed class SchemaEntryGenerator
         {
             "15" => (LdifValue?)LdifValue.FromString(FreeText()),                        // Directory String
             "26" => LdifValue.FromString(_faker.Internet.DomainWord()),                  // IA5 String
-            "27" => LdifValue.FromString(_faker.Random.Int(0, 100000).ToString()),       // INTEGER
+            "27" => LdifValue.FromString(_faker.Random.Int(0, 100000).ToString(CultureInfo.InvariantCulture)), // INTEGER
             "7" => LdifValue.FromString(_faker.Random.Bool() ? "TRUE" : "FALSE"),        // Boolean
             "12" => LdifValue.FromString(parentDn),                                      // DN
             "24" => LdifValue.FromString(RandomTimestamp()),                             // Generalized Time
@@ -257,7 +258,7 @@ public sealed class SchemaEntryGenerator
     {
         var timestamp = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             .AddSeconds(_faker.Random.Long(0, 30L * 365 * 24 * 3600));
-        return timestamp.ToString("yyyyMMddHHmmss") + "Z";
+        return timestamp.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) + "Z";
     }
 
     private static string SanitizeUid(string value)

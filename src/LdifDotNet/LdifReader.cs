@@ -184,14 +184,14 @@ public sealed class LdifReader : IDisposable
         return new LdifContentRecord(dn, ParseAttributes(lines, i));
     }
 
-    private LdifRecord ParseDelete(string dn, List<LdifControl> controls, List<LogicalLine> lines, int i)
+    private static LdifDeleteRecord ParseDelete(string dn, List<LdifControl> controls, List<LogicalLine> lines, int i)
     {
         if (i < lines.Count)
             throw new LdifParseException("unexpected content after 'changetype: delete'", lines[i].Number);
         return new LdifDeleteRecord(dn) { Controls = controls };
     }
 
-    private LdifRecord ParseModDn(string dn, List<LdifControl> controls, List<LogicalLine> lines, int i)
+    private LdifModDnRecord ParseModDn(string dn, List<LdifControl> controls, List<LogicalLine> lines, int i)
     {
         string newRdn = ExpectValue(lines, ref i, "newrdn");
         string deleteOldRdn = ExpectValue(lines, ref i, "deleteoldrdn").Trim();
@@ -226,7 +226,7 @@ public sealed class LdifReader : IDisposable
         return value;
     }
 
-    private List<LdifModification> ParseModifications(List<LogicalLine> lines, int i)
+    private static List<LdifModification> ParseModifications(List<LogicalLine> lines, int i)
     {
         var mods = new List<LdifModification>();
         while (i < lines.Count)
@@ -268,7 +268,7 @@ public sealed class LdifReader : IDisposable
         return mods;
     }
 
-    private List<LdifAttribute> ParseAttributes(List<LogicalLine> lines, int start)
+    private static List<LdifAttribute> ParseAttributes(List<LogicalLine> lines, int start)
     {
         // Values of the same attribute may be interleaved with others in the file;
         // group them by name (case-insensitive) preserving first-appearance order.
@@ -292,7 +292,7 @@ public sealed class LdifReader : IDisposable
         return order.ConvertAll(name => new LdifAttribute(name, byName[name]));
     }
 
-    private LdifControl ParseControl(LogicalLine line)
+    private static LdifControl ParseControl(LogicalLine line)
     {
         string rest = line.Text[AfterName(line)..];
         if (rest.StartsWith(':'))
@@ -311,12 +311,16 @@ public sealed class LdifReader : IDisposable
         if (rest.StartsWith(' '))
         {
             rest = rest.TrimStart(' ');
-            if (rest is "true" || rest.StartsWith("true ") || rest.StartsWith("true:"))
+            if (rest is "true"
+                || rest.StartsWith("true ", StringComparison.Ordinal)
+                || rest.StartsWith("true:", StringComparison.Ordinal))
             {
                 criticality = true;
                 rest = rest[4..].TrimStart(' ');
             }
-            else if (rest is "false" || rest.StartsWith("false ") || rest.StartsWith("false:"))
+            else if (rest is "false"
+                || rest.StartsWith("false ", StringComparison.Ordinal)
+                || rest.StartsWith("false:", StringComparison.Ordinal))
             {
                 criticality = false;
                 rest = rest[5..].TrimStart(' ');

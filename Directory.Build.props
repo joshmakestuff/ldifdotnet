@@ -5,6 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Cross-platform is an invariant: platform-compat analyzers (CA1416 etc.)
+         fail the build on OS-specific API use. See CLAUDE.md. -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
   </PropertyGroup>
 
 </Project>
