@@ -229,6 +229,36 @@ public class WriterTests
         Assert.Contains("at least one attribute", ex.Message);
     }
 
+    [Fact]
+    public void Rejects_content_record_with_an_empty_valued_attribute()
+    {
+        // A valid attribute is present too, so the empty one would be silently dropped.
+        var record = new LdifContentRecord("dc=x",
+            new LdifAttribute("dc", "x"),
+            new LdifAttribute("cn"));
+
+        var ex = Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+        Assert.Contains("no values", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_add_record_with_an_empty_valued_attribute()
+    {
+        var record = new LdifAddRecord("dc=x",
+            new LdifAttribute("dc", "x"),
+            new LdifAttribute("cn"));
+
+        Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+    }
+
+    [Fact]
+    public void Empty_string_value_is_still_valid()
+    {
+        // One empty-string value is a valid attrval-spec (bare colon); zero values is not.
+        string ldif = LdifWriter.WriteToString([new LdifContentRecord("dc=x", new LdifAttribute("seeAlso", ""))]);
+        Assert.Contains("\nseeAlso:\n", ldif);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("1cn")]            // descr must start with a letter
