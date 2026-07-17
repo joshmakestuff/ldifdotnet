@@ -50,8 +50,12 @@ public sealed class LdifWriter : IDisposable
 /// <summary>Options controlling LDIF output.</summary>
 public sealed class LdifWriterOptions
 {
-    /// <summary>Column at which output lines are folded. Default 76 per RFC 2849.</summary>
-    public int WrapColumn { get; set; } = 76;
+    /// <summary>
+    /// Column at which output lines are folded. Default 76 per RFC 2849.
+    /// Set to null to disable folding entirely (like ldapsearch -o ldif-wrap=no);
+    /// such output is not strictly RFC-conformant but is widely accepted.
+    /// </summary>
+    public int? WrapColumn { get; set; } = 76;
 
     /// <summary>Whether to emit "version: 1" before the first record. Default true.</summary>
     public bool IncludeVersionLine { get; set; } = true;
