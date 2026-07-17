@@ -22,6 +22,20 @@ jobs:
           dotnet-version: 10.0.x
       - run: dotnet test
 
+  test-release:
+    name: test (Release)
+    runs-on: ubuntu-latest
+    env:
+      LDIF_REQUIRE_PWSH: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      # Release differs from the Debug matrix: optimizations on, Debug.Assert
+      # compiled out — the configuration that actually ships must also be green.
+      - run: dotnet test -c Release
+
   pack:
     name: pack validation
     runs-on: ubuntu-latest
