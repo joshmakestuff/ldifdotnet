@@ -1,0 +1,49 @@
+name: Publish PowerShell module
+
+# Publishes the PowerShell module for an EXISTING tag to the PowerShell
+# Gallery. The release workflow does this automatically on tag push once the
+# PSGALLERY_API_KEY secret exists; this manual dispatch covers tags cut before
+# the key was configured (e.g. v0.1.0) without re-running a whole release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Stage PowerShell module
+        shell: pwsh
+        run: |
+          $version = '${{ inputs.tag }}'.TrimStart('v')
+          dotnet publish src/LdifDotNet.PowerShell -c Release -o staging/LdifDotNet.PowerShell `
+            -p:Version=$version -p:ContinuousIntegrationBuild=true
+          $manifest = 'staging/LdifDotNet.PowerShell/LdifDotNet.PowerShell.psd1'
+          # PSGallery versions come from the manifest; sync it to the tag.
+          $stable = $version.Split('-')[0]
+          Update-PSModuleManifest -Path $manifest -ModuleVersion $stable
+          if ($version.Contains('-')) {
+            Update-PSModuleManifest -Path $manifest -Prerelease $version.Split('-', 2)[1].Replace('.', '')
+          }
+
+      - name: Publish to PSGallery
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          if (-not $env:PSGALLERY_API_KEY) { throw 'PSGALLERY_API_KEY secret is not set.' }
+          Publish-PSResource -Path staging/LdifDotNet.PowerShell -ApiKey $env:PSGALLERY_API_KEY
