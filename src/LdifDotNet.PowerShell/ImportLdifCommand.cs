@@ -23,7 +23,7 @@ public sealed class ImportLdifCommand : PSCmdlet
                 try
                 {
                     foreach (var record in LdifReader.ReadFile(resolved))
-                        WriteObject(record);
+                        WriteObject(LdifView.AsPipelineObject(record));
                 }
                 catch (LdifParseException exception)
                 {

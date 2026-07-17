@@ -1,6 +1,7 @@
 @{
     RootModule           = 'LdifDotNet.PowerShell.dll'
     ModuleVersion        = '0.1.0'
+    FormatsToProcess     = @('LdifDotNet.PowerShell.format.ps1xml')
     GUID                 = 'e5b3a4d2-9c41-4f8e-b6d7-2a8f0c1d5e93'
     Author               = 'Joshua Toon'
     Copyright            = '(c) 2026 Joshua Toon. Licensed under the OpenLDAP Public License v2.8.'

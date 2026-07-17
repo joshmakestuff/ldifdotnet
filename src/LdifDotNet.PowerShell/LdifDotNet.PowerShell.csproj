@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <None Include="LdifDotNet.PowerShell.psd1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="LdifDotNet.PowerShell.format.ps1xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

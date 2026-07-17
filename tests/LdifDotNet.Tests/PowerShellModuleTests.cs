@@ -65,11 +65,47 @@ public class PowerShellModuleTests
             Import-Module $args[0]
             $found = Import-Ldif $args[1] | Where-Object Dn -like '*Accounting*'
             "count=$(@($found).Count)"
-            "cn=$($found['cn'].Values[0].AsString())"
+            "cn=$($found.cn)"
             """, ManifestPath, Fixtures.PathOf("rfc2849", "example1.ldif"));
 
         Assert.Contains("count=1", output);
         Assert.Contains("cn=Bjorn Jensen", output);
+    }
+
+    [PwshFact]
+    public void Content_attributes_surface_as_friendly_properties()
+    {
+        string output = RunPwsh("""
+            Import-Module $args[0]
+            $e = Import-Ldif $args[1] | Where-Object Dn -like '*Barbara*'
+            "sn=$($e.sn)"
+            "sntype=$($e.sn.GetType().Name)"
+            "cncount=$(@($e.cn).Count)"
+            "occount=$(@($e.objectClass).Count)"
+            "ci=$($e.SN -eq $e.sn)"
+            "view=$($e.PSObject.TypeNames -contains 'LdifDotNet.PowerShell.LdifEntry')"
+            """, ManifestPath, Fixtures.PathOf("rfc2849", "example1.ldif"));
+
+        Assert.Contains("sn=Jensen", output);
+        Assert.Contains("sntype=String", output);  // single value -> scalar
+        Assert.Contains("cncount=3", output);       // several values -> array
+        Assert.Contains("occount=3", output);
+        Assert.Contains("ci=True", output);         // case-insensitive access
+        Assert.Contains("view=True", output);       // formatting type name applied
+    }
+
+    [PwshFact]
+    public void Binary_attribute_surfaces_as_byte_array()
+    {
+        string output = RunPwsh("""
+            Import-Module $args[0]
+            $e = "dn: dc=x`njpegPhoto:: AQID" | ConvertFrom-Ldif
+            "isbytes=$($e.jpegPhoto -is [byte[]])"
+            "bytes=$([string]::Join(',', $e.jpegPhoto))"
+            """, ManifestPath);
+
+        Assert.Contains("isbytes=True", output);
+        Assert.Contains("bytes=1,2,3", output);
     }
 
     [PwshFact]

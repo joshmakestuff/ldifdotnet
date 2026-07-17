@@ -32,7 +32,7 @@ public sealed class ConvertFromLdifCommand : PSCmdlet
         try
         {
             foreach (var record in LdifReader.Parse(_input.ToString()))
-                WriteObject(record);
+                WriteObject(LdifView.AsPipelineObject(record));
         }
         catch (LdifParseException exception)
         {
