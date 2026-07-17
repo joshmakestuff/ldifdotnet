@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <Description>PowerShell cmdlets for LDIF (RFC 2849): ConvertFrom-Ldif, ConvertTo-Ldif, Import-Ldif, Export-Ldif.</Description>
+    <!-- Ships via PowerShell Gallery, not NuGet. -->
+    <IsPackable>false</IsPackable>
     <!-- CA1819: array-typed [Parameter] properties are the PowerShell pipeline
          binding convention (mirrors built-in cmdlets). -->
     <NoWarn>$(NoWarn);CA1819</NoWarn>

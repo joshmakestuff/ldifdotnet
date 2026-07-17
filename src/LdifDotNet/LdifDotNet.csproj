@@ -4,4 +4,8 @@
     <Description>Cross-platform .NET library for reading and writing LDIF (RFC 2849).</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
 </Project>

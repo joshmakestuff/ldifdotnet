@@ -4,4 +4,8 @@
     <Description>Parser for LDAP schema definitions (RFC 4512, slapd.conf schema file format).</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
 </Project>

@@ -19,6 +19,20 @@ jobs:
           dotnet-version: 10.0.x
       - run: dotnet test
 
+  pack:
+    name: pack validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet pack -c Release -o packages -p:ContinuousIntegrationBuild=true
+      - name: Exactly the three library packages must pack
+        run: |
+          ls -1 packages/*.nupkg
+          test "$(ls -1 packages/*.nupkg | wc -l)" = "3"
+
   differential:
     name: differential vs OpenLDAP
     runs-on: ubuntu-latest
