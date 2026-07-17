@@ -15,6 +15,7 @@ public sealed class LdifReader : IDisposable
     private int _lineNumber;
     private bool _firstBlock = true;
 
+    /// <summary>Creates a reader over the given text; the reader does not take ownership of it.</summary>
     public LdifReader(TextReader reader)
         : this(reader, ownsReader: false)
     {
@@ -83,6 +84,7 @@ public sealed class LdifReader : IDisposable
             yield return record;
     }
 
+    /// <summary>Releases the underlying reader when this instance owns it (file-based readers).</summary>
     public void Dispose()
     {
         if (_ownsReader)

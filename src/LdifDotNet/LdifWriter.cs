@@ -22,6 +22,8 @@ public sealed class LdifWriter : IDisposable
     private bool _firstRecord = true;
     private bool? _changeDocument;
 
+    /// <summary>Creates a writer over the given text writer; options are snapshotted, and
+    /// the writer does not take ownership of <paramref name="writer"/>.</summary>
     public LdifWriter(TextWriter writer, LdifWriterOptions? options = null)
     {
         _writer = writer ?? throw new ArgumentNullException(nameof(writer));
@@ -32,6 +34,8 @@ public sealed class LdifWriter : IDisposable
         _includeVersionLine = options.IncludeVersionLine;
     }
 
+    /// <summary>Writes one record, validating first that it can be serialized as
+    /// strict RFC 2849 within this document (see the class summary).</summary>
     public void WriteRecord(LdifRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -133,6 +137,7 @@ public sealed class LdifWriter : IDisposable
         return stringWriter.ToString();
     }
 
+    /// <summary>Flushes the underlying writer; ownership stays with the caller.</summary>
     public void Dispose() => _writer.Flush();
 
     /// <summary>

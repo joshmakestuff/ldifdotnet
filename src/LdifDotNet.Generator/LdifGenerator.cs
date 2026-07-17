@@ -14,6 +14,7 @@ public sealed class LdifGenerator
     private readonly HashSet<string> _usedUids = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _usedGroupNames = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Creates a generator; null options use the defaults.</summary>
     public LdifGenerator(LdifGeneratorOptions? options = null)
     {
         _options = options ?? new LdifGeneratorOptions();

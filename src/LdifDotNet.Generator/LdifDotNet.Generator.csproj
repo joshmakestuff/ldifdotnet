@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <Description>Fake LDAP directory data generator for LdifDotNet, powered by Bogus.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

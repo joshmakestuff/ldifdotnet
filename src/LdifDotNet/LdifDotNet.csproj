@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <Description>Cross-platform .NET library for reading and writing LDIF (RFC 2849).</Description>
+    <!-- Ships IntelliSense docs in the package; CS1591 (missing XML comment on a
+         public member) is an error, so doc coverage cannot drift. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

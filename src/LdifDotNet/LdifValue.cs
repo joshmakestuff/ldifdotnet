@@ -21,6 +21,7 @@ public readonly struct LdifValue : IEquatable<LdifValue>
         _url = url;
     }
 
+    /// <summary>Creates a textual value.</summary>
     public static LdifValue FromString(string value) =>
         new(value ?? throw new ArgumentNullException(nameof(value)), null, null);
 
@@ -48,6 +49,7 @@ public readonly struct LdifValue : IEquatable<LdifValue>
         return new(null, null, url);
     }
 
+    /// <summary>Converts a string to a textual value; equivalent to <see cref="FromString"/>.</summary>
     public static implicit operator LdifValue(string value) => FromString(value);
 
     /// <summary>True when the value was constructed from (or parsed as) raw bytes.</summary>
@@ -76,6 +78,8 @@ public readonly struct LdifValue : IEquatable<LdifValue>
     /// text and URL values. Used by the reader for strict UTF-8 decoding of DN fields.</summary>
     internal byte[]? BinaryOctets => _bytes;
 
+    /// <summary>Octet-wise equality: a value read from base64 equals the same text read directly.
+    /// URL references compare by URI.</summary>
     public bool Equals(LdifValue other)
     {
         if (IsUrl || other.IsUrl)
@@ -83,12 +87,16 @@ public readonly struct LdifValue : IEquatable<LdifValue>
         return Octets().AsSpan().SequenceEqual(other.Octets());
     }
 
+    /// <inheritdoc />
     public override bool Equals(object? obj) => obj is LdifValue other && Equals(other);
 
+    /// <summary>Octet-wise equality; see <see cref="Equals(LdifValue)"/>.</summary>
     public static bool operator ==(LdifValue left, LdifValue right) => left.Equals(right);
 
+    /// <summary>Octet-wise inequality; see <see cref="Equals(LdifValue)"/>.</summary>
     public static bool operator !=(LdifValue left, LdifValue right) => !left.Equals(right);
 
+    /// <summary>Hash over the value's octets, consistent with <see cref="Equals(LdifValue)"/>.</summary>
     public override int GetHashCode()
     {
         if (IsUrl)
@@ -98,5 +106,6 @@ public readonly struct LdifValue : IEquatable<LdifValue>
         return hash.ToHashCode();
     }
 
+    /// <summary>The value as text; URL references return the original URI string.</summary>
     public override string ToString() => IsUrl ? _url!.OriginalString : AsString();
 }
