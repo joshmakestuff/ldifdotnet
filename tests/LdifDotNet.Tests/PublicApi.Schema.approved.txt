@@ -1,0 +1,59 @@
+namespace LdifDotNet.Schema
+{
+    public sealed class LdapAttributeType
+    {
+        public bool Collective { get; }
+        public string? Description { get; }
+        public string? Equality { get; }
+        public System.Collections.Generic.IReadOnlyDictionary<string, System.Collections.Generic.IReadOnlyList<string>> Extensions { get; }
+        public string Name { get; }
+        public System.Collections.Generic.IReadOnlyList<string> Names { get; }
+        public bool NoUserModification { get; }
+        public bool Obsolete { get; }
+        public string Oid { get; }
+        public string? Ordering { get; }
+        public bool SingleValue { get; }
+        public string? Substring { get; }
+        public string? SuperiorName { get; }
+        public string? Syntax { get; }
+        public int? SyntaxLength { get; }
+        public string? Usage { get; }
+        public override string ToString() { }
+    }
+    public sealed class LdapObjectClass
+    {
+        public string? Description { get; }
+        public System.Collections.Generic.IReadOnlyDictionary<string, System.Collections.Generic.IReadOnlyList<string>> Extensions { get; }
+        public LdifDotNet.Schema.LdapObjectClassKind Kind { get; }
+        public System.Collections.Generic.IReadOnlyList<string> May { get; }
+        public System.Collections.Generic.IReadOnlyList<string> Must { get; }
+        public string Name { get; }
+        public System.Collections.Generic.IReadOnlyList<string> Names { get; }
+        public bool Obsolete { get; }
+        public string Oid { get; }
+        public System.Collections.Generic.IReadOnlyList<string> SuperiorNames { get; }
+        public override string ToString() { }
+    }
+    public enum LdapObjectClassKind
+    {
+        Abstract = 0,
+        Structural = 1,
+        Auxiliary = 2,
+    }
+    public sealed class LdapSchema
+    {
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.Schema.LdapAttributeType> AttributeTypes { get; }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.Schema.LdapObjectClass> ObjectClasses { get; }
+        public LdifDotNet.Schema.LdapAttributeType? FindAttributeType(string nameOrOid) { }
+        public LdifDotNet.Schema.LdapObjectClass? FindObjectClass(string nameOrOid) { }
+        public System.Collections.Generic.IReadOnlyList<string> OptionalAttributeNames(LdifDotNet.Schema.LdapObjectClass objectClass) { }
+        public System.Collections.Generic.IReadOnlyList<string> RequiredAttributeNames(LdifDotNet.Schema.LdapObjectClass objectClass) { }
+        public static LdifDotNet.Schema.LdapSchema Load(params string[] paths) { }
+        public static LdifDotNet.Schema.LdapSchema Parse(string text) { }
+    }
+    public sealed class LdapSchemaParseException : System.Exception
+    {
+        public LdapSchemaParseException(string message, int lineNumber) { }
+        public int LineNumber { get; }
+    }
+}

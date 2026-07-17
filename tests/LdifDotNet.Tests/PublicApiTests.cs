@@ -19,6 +19,10 @@ public class PublicApiTests
     public void Generator_public_api_matches_approved_contract() =>
         AssertApproved(typeof(Generator.LdifGenerator).Assembly, "PublicApi.Generator.approved.txt");
 
+    [Fact]
+    public void Schema_public_api_matches_approved_contract() =>
+        AssertApproved(typeof(Schema.LdapSchema).Assembly, "PublicApi.Schema.approved.txt");
+
     private static void AssertApproved(Assembly assembly, string approvedFileName)
     {
         string current = assembly

@@ -55,12 +55,12 @@ public class SchemaCorpusTests
         Assert.True(totalObjectClasses > 50, $"expected a rich corpus, found only {totalObjectClasses} object classes");
     }
 
-    private static IEnumerable<string> AllSchemaFiles() =>
+    internal static IEnumerable<string> AllSchemaFiles() =>
         Directory.EnumerateFiles(Fixtures.PathOf("schemas"), "*.schema", SearchOption.AllDirectories)
             .Select(p => Path.GetRelativePath(Fixtures.Root, p).Replace('\\', '/'))
             .OrderBy(p => p, StringComparer.Ordinal);
 
-    private static (int AttributeTypes, int ObjectClasses) CountDefinitions(string path)
+    internal static (int AttributeTypes, int ObjectClasses) CountDefinitions(string path)
     {
         int attributeTypes = 0, objectClasses = 0;
         foreach (string line in File.ReadLines(path))
