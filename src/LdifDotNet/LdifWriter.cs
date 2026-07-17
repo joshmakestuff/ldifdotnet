@@ -7,13 +7,19 @@ namespace LdifDotNet;
 /// <summary>
 /// Forward-only LDIF writer (RFC 2849). Emits strictly conformant output:
 /// base64-encodes values that are not safe strings and folds long lines.
-/// Lines are always terminated with LF.
+/// Lines are always terminated with LF. Records that cannot be serialized as
+/// valid RFC 2849 are rejected before anything is written: a document may not
+/// mix content and change records, content and add records need at least one
+/// attribute, and attribute descriptions and control OIDs must match the RFC
+/// grammar. The record model itself is deliberately permissive; this writer is
+/// the enforcement point.
 /// </summary>
 public sealed class LdifWriter : IDisposable
 {
     private readonly TextWriter _writer;
     private readonly LdifWriterOptions _options;
     private bool _firstRecord = true;
+    private bool? _changeDocument;
 
     public LdifWriter(TextWriter writer, LdifWriterOptions? options = null)
     {
@@ -26,6 +32,15 @@ public sealed class LdifWriter : IDisposable
     public void WriteRecord(LdifRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
+        ValidateRecord(record);
+
+        bool isChange = record is LdifChangeRecord;
+        if (_changeDocument is { } changeDocument && changeDocument != isChange)
+        {
+            throw new InvalidOperationException(
+                $"An LDIF document contains either content records or change records, never both (RFC 2849 ldif-file); this document already contains {(changeDocument ? "change" : "content")} records.");
+        }
+        _changeDocument = isChange;
 
         if (_firstRecord)
         {
@@ -116,6 +131,117 @@ public sealed class LdifWriter : IDisposable
     }
 
     public void Dispose() => _writer.Flush();
+
+    /// <summary>
+    /// Rejects records the writer could only serialize as invalid RFC 2849.
+    /// Runs before any output so a failed record never leaves partial lines.
+    /// </summary>
+    private static void ValidateRecord(LdifRecord record)
+    {
+        if (record is LdifChangeRecord change)
+        {
+            foreach (var control in change.Controls)
+            {
+                if (!IsNumericOid(control.Oid))
+                    throw new ArgumentException($"Control OID '{control.Oid}' is not a valid numeric OID (RFC 2849 ldap-oid).", nameof(record));
+            }
+        }
+
+        switch (record)
+        {
+            case LdifContentRecord content:
+                if (content.Attributes.Count == 0)
+                    throw new ArgumentException("A content record must have at least one attribute (RFC 2849 ldif-attrval-record).", nameof(record));
+                if (FirstInvalidAttributeName(content.Attributes) is { } badContentName)
+                    throw new ArgumentException($"'{badContentName}' is not a valid attribute description (RFC 2849 AttributeDescription).", nameof(record));
+                break;
+
+            case LdifAddRecord add:
+                if (add.Attributes.Count == 0)
+                    throw new ArgumentException("An add change record must have at least one attribute (RFC 2849 change-add).", nameof(record));
+                if (FirstInvalidAttributeName(add.Attributes) is { } badAddName)
+                    throw new ArgumentException($"'{badAddName}' is not a valid attribute description (RFC 2849 AttributeDescription).", nameof(record));
+                break;
+
+            case LdifModifyRecord modify:
+                foreach (var mod in modify.Modifications)
+                {
+                    if (mod.Type is not (LdifModificationType.Add or LdifModificationType.Delete or LdifModificationType.Replace or LdifModificationType.Increment))
+                        throw new ArgumentException($"Unknown modification type {mod.Type}.", nameof(record));
+                    if (!IsAttributeDescription(mod.AttributeName))
+                        throw new ArgumentException($"'{mod.AttributeName}' is not a valid attribute description (RFC 2849 AttributeDescription).", nameof(record));
+                }
+                break;
+
+            case LdifDeleteRecord or LdifModDnRecord:
+                break;
+
+            default:
+                throw new ArgumentException($"Unknown record type {record.GetType()}.", nameof(record));
+        }
+    }
+
+    private static string? FirstInvalidAttributeName(IReadOnlyList<LdifAttribute> attributes)
+    {
+        foreach (var attribute in attributes)
+        {
+            if (!IsAttributeDescription(attribute.Name))
+                return attribute.Name;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// RFC 2849 AttributeDescription: a numeric OID or a descr (ALPHA then
+    /// ALPHA / DIGIT / "-"), followed by zero or more non-empty ";option" parts.
+    /// </summary>
+    private static bool IsAttributeDescription(string name)
+    {
+        string[] parts = name.Split(';');
+        if (!IsNumericOid(parts[0]) && !IsDescr(parts[0]))
+            return false;
+        for (int i = 1; i < parts.Length; i++)
+        {
+            if (parts[i].Length == 0)
+                return false;
+            foreach (char c in parts[i])
+            {
+                if (!IsAttrTypeChar(c))
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool IsDescr(string text)
+    {
+        if (text.Length == 0 || !char.IsAsciiLetter(text[0]))
+            return false;
+        foreach (char c in text)
+        {
+            if (!IsAttrTypeChar(c))
+                return false;
+        }
+        return true;
+    }
+
+    private static bool IsAttrTypeChar(char c) => char.IsAsciiLetterOrDigit(c) || c == '-';
+
+    /// <summary>RFC 2849 ldap-oid: 1*DIGIT *("." 1*DIGIT).</summary>
+    private static bool IsNumericOid(string text)
+    {
+        bool expectDigit = true;
+        foreach (char c in text)
+        {
+            if (char.IsAsciiDigit(c))
+                expectDigit = false;
+            else if (c == '.' && !expectDigit)
+                expectDigit = true;
+            else
+                return false;
+        }
+        return text.Length > 0 && !expectDigit;
+    }
 
     private void WriteAttributes(IReadOnlyList<LdifAttribute> attributes)
     {
