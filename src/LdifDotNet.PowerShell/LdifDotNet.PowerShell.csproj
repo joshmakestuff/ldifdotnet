@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>PowerShell cmdlets for LDIF (RFC 2849): ConvertFrom-Ldif, ConvertTo-Ldif, Import-Ldif, Export-Ldif.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile-time reference only: the host PowerShell provides the real assembly. -->
+    <PackageReference Include="PowerShellStandard.Library" Version="5.1.1" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LdifDotNet\LdifDotNet.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="LdifDotNet.PowerShell.psd1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\LdifDotNet\LdifDotNet.csproj" />
     <ProjectReference Include="..\..\src\LdifDotNet.Generator\LdifDotNet.Generator.csproj" />
     <ProjectReference Include="..\..\src\LdifDotNet.Schema\LdifDotNet.Schema.csproj" />
+    <ProjectReference Include="..\..\src\LdifDotNet.PowerShell\LdifDotNet.PowerShell.csproj" />
   </ItemGroup>
 
   <ItemGroup>
