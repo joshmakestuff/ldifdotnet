@@ -18,4 +18,20 @@ namespace LdifDotNet.Generator
         public int PeopleCount { get; set; }
         public int? Seed { get; set; }
     }
+    public sealed class SchemaEntryGenerator
+    {
+        public SchemaEntryGenerator(LdifDotNet.Schema.LdapSchema schema, LdifDotNet.Generator.SchemaGeneratorOptions? options = null) { }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.LdifContentRecord> Entries(string objectClassName, int count, string parentDn) { }
+        public LdifDotNet.LdifContentRecord Entry(string objectClassName, string parentDn) { }
+    }
+    public sealed class SchemaGeneratorOptions
+    {
+        public SchemaGeneratorOptions() { }
+        public System.Collections.Generic.IList<string> AuxiliaryClasses { get; }
+        public System.Collections.Generic.IDictionary<string, System.Collections.Generic.IReadOnlyList<string>> ExampleValues { get; }
+        public string Locale { get; set; }
+        public double OptionalAttributeFill { get; set; }
+        public string? RdnAttribute { get; set; }
+        public int? Seed { get; set; }
+    }
 }
