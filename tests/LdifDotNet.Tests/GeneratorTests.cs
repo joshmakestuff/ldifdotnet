@@ -106,6 +106,29 @@ public class GeneratorTests
             Assert.Equal(records[i].Dn, reparsed[i].Dn);
     }
 
+    [Fact]
+    public void Base_entry_handles_escaped_base_dn()
+    {
+        var options = new LdifGeneratorOptions { Seed = 1, BaseDn = @"o=Example\, Inc,dc=com" };
+        var baseEntry = new LdifGenerator(options).SampleDirectory()[0];
+
+        Assert.Equal(@"o=Example\, Inc,dc=com", baseEntry.Dn);
+        // The o attribute value is the unescaped name — it must match the DN's RDN.
+        Assert.Equal("Example, Inc", baseEntry["o"]!.Values[0].AsString());
+    }
+
+    [Fact]
+    public void Multivalued_first_rdn_base_dn_throws()
+    {
+        var generator = new LdifGenerator(new LdifGeneratorOptions { Seed = 1, BaseDn = "dc=a+dc=b,dc=com" });
+
+        Assert.Throws<InvalidOperationException>(() => generator.SampleDirectory());
+    }
+
+    [Fact]
+    public void Malformed_base_dn_throws_at_construction() =>
+        Assert.Throws<ArgumentException>(() => new LdifGenerator(new LdifGeneratorOptions { BaseDn = "garbage" }));
+
     private static string ParentDn(string dn)
     {
         for (int i = 0; i < dn.Length; i++)
