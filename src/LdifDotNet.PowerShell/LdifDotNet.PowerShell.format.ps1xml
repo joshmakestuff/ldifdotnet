@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Default table view for LDIF content entries surfaced by Import-Ldif/ConvertFrom-Ldif. -->
+<Configuration>
+  <ViewDefinitions>
+    <View>
+      <Name>LdifEntry</Name>
+      <ViewSelectedBy>
+        <TypeName>LdifDotNet.PowerShell.LdifEntry</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader>
+            <Label>Dn</Label>
+          </TableColumnHeader>
+          <TableColumnHeader>
+            <Label>objectClass</Label>
+          </TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem>
+                <PropertyName>Dn</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>objectClass</PropertyName>
+              </TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+  </ViewDefinitions>
+</Configuration>
