@@ -352,7 +352,7 @@ public sealed class LdifReader : IDisposable
             string base64 = text[(colon + 2)..].Trim();
             try
             {
-                return LdifValue.FromBytes(base64.Length == 0 ? [] : Convert.FromBase64String(base64));
+                return LdifValue.FromOwnedBytes(base64.Length == 0 ? [] : Convert.FromBase64String(base64));
             }
             catch (FormatException)
             {
