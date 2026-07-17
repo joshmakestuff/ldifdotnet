@@ -4,13 +4,20 @@ using System.Diagnostics;
 
 namespace LdifDotNet.Tests;
 
-/// <summary>Runs only where pwsh (PowerShell 7+) is on PATH.</summary>
+/// <summary>
+/// Runs only where pwsh (PowerShell 7+) is on PATH. With LDIF_REQUIRE_PWSH=1
+/// (set in CI, whose images promise pwsh) a missing pwsh fails the tests
+/// instead of silently skipping the coverage the job is supposed to provide.
+/// </summary>
 public sealed class PwshFactAttribute : FactAttribute
 {
     public PwshFactAttribute()
     {
-        if (PowerShellModuleTests.PwshPath is null)
+        if (PowerShellModuleTests.PwshPath is null
+            && Environment.GetEnvironmentVariable("LDIF_REQUIRE_PWSH") != "1")
+        {
             Skip = "pwsh (PowerShell 7+) not found on PATH.";
+        }
     }
 }
 
@@ -191,6 +198,7 @@ public class PowerShellModuleTests
 
     private static string RunPwsh(string script, params string[] scriptArgs)
     {
+        Assert.True(PwshPath is not null, "pwsh (PowerShell 7+) is not on PATH, but LDIF_REQUIRE_PWSH=1 promises it.");
         string scriptFile = Path.Combine(Path.GetTempPath(), $"ldifdotnet-test-{Guid.NewGuid():N}.ps1");
         File.WriteAllText(scriptFile, "$ErrorActionPreference = 'Stop'\n" + script);
         try

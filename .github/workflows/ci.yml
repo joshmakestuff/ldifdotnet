@@ -12,6 +12,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Runner images promise pwsh; fail rather than silently skip the pwsh e2e tests.
+      LDIF_REQUIRE_PWSH: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
@@ -39,6 +42,7 @@ jobs:
     env:
       LDIF_DIFFERENTIAL: "1"
       LDIF_EXPECTED_OPENLDAP: "2.6"
+      LDIF_REQUIRE_PWSH: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
