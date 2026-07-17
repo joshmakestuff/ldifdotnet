@@ -17,7 +17,7 @@ jobs:
       LDIF_REQUIRE_PWSH: "1"
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - run: dotnet test
@@ -29,7 +29,7 @@ jobs:
       LDIF_REQUIRE_PWSH: "1"
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       # Release differs from the Debug matrix: optimizations on, Debug.Assert
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - run: dotnet pack -c Release -o packages -p:ContinuousIntegrationBuild=true
@@ -61,7 +61,7 @@ jobs:
       LDIF_REQUIRE_PWSH: "1"
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: Install OpenLDAP tools
