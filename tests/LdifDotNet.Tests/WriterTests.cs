@@ -308,6 +308,67 @@ public class WriterTests
         Assert.Contains("numeric OID", ex.Message);
     }
 
+    [Theory]
+    [InlineData("file:///tmp/a\nb")]      // LF: would inject document structure
+    [InlineData("file:///tmp/a\rb")]      // CR
+    [InlineData("file:///tmp/a\r\nb")]    // CRLF
+    [InlineData("file:///tmp/a\tb")]      // TAB
+    [InlineData("file:///tmp/a\0b")]      // NUL
+    [InlineData("file:///tmp/a\u007Fb")]  // DEL
+    [InlineData(" file:///tmp/ab")]       // leading space: the reader trims it
+    [InlineData("file:///tmp/ab ")]       // trailing space: the reader trims it
+    public void Rejects_url_value_a_url_line_cannot_carry(string reference)
+    {
+        var record = new LdifContentRecord("dc=x",
+            new LdifAttribute("jpegPhoto", LdifValue.FromUrl(new Uri(reference))));
+
+        var ex = Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+        Assert.Contains("URL value", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_url_with_control_character_in_add_record()
+    {
+        var record = new LdifAddRecord("dc=x",
+            new LdifAttribute("jpegPhoto", LdifValue.FromUrl(new Uri("file:///a\nb"))));
+
+        Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+    }
+
+    [Fact]
+    public void Rejects_url_with_control_character_in_modification_value()
+    {
+        var record = new LdifModifyRecord("dc=x",
+            new LdifModification(LdifModificationType.Add, "jpegPhoto", LdifValue.FromUrl(new Uri("file:///a\nb"))));
+
+        Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+    }
+
+    [Fact]
+    public void Rejects_url_with_control_character_in_control_value()
+    {
+        var record = new LdifDeleteRecord("dc=x")
+        {
+            Controls = [new LdifControl("1.2.3", criticality: null, LdifValue.FromUrl(new Uri("file:///a\nb")))],
+        };
+
+        Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+    }
+
+    [Theory]
+    [InlineData("file:///photos/a b.jpg")]    // interior space is tolerated
+    [InlineData("file:///photos/café.jpg")]  // non-ASCII is tolerated
+    [InlineData("file:///photos/a%0Ab.jpg")]  // percent-encoded control stays literal text
+    public void Tolerated_url_values_round_trip(string reference)
+    {
+        var record = new LdifContentRecord("dc=x",
+            new LdifAttribute("jpegPhoto", LdifValue.FromUrl(new Uri(reference))));
+
+        string ldif = LdifWriter.WriteToString([record]);
+        var reparsed = Assert.IsType<LdifContentRecord>(Assert.Single(LdifReader.Parse(ldif)));
+        Assert.Equal(reference, reparsed["jpegPhoto"]!.Values[0].Url!.OriginalString);
+    }
+
     [Fact]
     public void Invalid_record_writes_nothing()
     {
