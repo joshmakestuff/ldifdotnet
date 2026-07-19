@@ -159,7 +159,7 @@ public sealed class LdifWriter : IDisposable
         {
             foreach (var control in change.Controls)
             {
-                if (!IsNumericOid(control.Oid))
+                if (!RfcGrammar.IsNumericOid(control.Oid))
                     throw new ArgumentException($"Control OID '{control.Oid}' is not a valid numeric OID (RFC 2849 ldap-oid).", nameof(record));
             }
         }
@@ -355,7 +355,7 @@ public sealed class LdifWriter : IDisposable
     private static bool IsAttributeDescription(string name)
     {
         string[] parts = name.Split(';');
-        if (!IsNumericOid(parts[0]) && !IsDescr(parts[0]))
+        if (!RfcGrammar.IsNumericOid(parts[0]) && !IsDescr(parts[0]))
             return false;
         for (int i = 1; i < parts.Length; i++)
         {
@@ -383,22 +383,6 @@ public sealed class LdifWriter : IDisposable
     }
 
     private static bool IsAttrTypeChar(char c) => char.IsAsciiLetterOrDigit(c) || c == '-';
-
-    /// <summary>RFC 2849 ldap-oid: 1*DIGIT *("." 1*DIGIT).</summary>
-    private static bool IsNumericOid(string text)
-    {
-        bool expectDigit = true;
-        foreach (char c in text)
-        {
-            if (char.IsAsciiDigit(c))
-                expectDigit = false;
-            else if (c == '.' && !expectDigit)
-                expectDigit = true;
-            else
-                return false;
-        }
-        return text.Length > 0 && !expectDigit;
-    }
 
     private void WriteAttributes(IReadOnlyList<LdifAttribute> attributes)
     {

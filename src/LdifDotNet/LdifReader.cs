@@ -11,8 +11,6 @@ namespace LdifDotNet;
 /// </summary>
 public sealed class LdifReader : IDisposable
 {
-    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-
     private readonly TextReader _reader;
     private readonly bool _ownsReader;
     private int _lineNumber;
@@ -62,7 +60,7 @@ public sealed class LdifReader : IDisposable
     /// UTF-8; invalid bytes are a parse error (see the class summary).</summary>
     public static IEnumerable<LdifRecord> ReadFile(string path)
     {
-        using var reader = new LdifReader(new StreamReader(path, StrictUtf8), ownsReader: true);
+        using var reader = new LdifReader(new StreamReader(path, RfcGrammar.StrictUtf8), ownsReader: true);
         foreach (var record in reader.ReadAll())
             yield return record;
     }
@@ -277,7 +275,7 @@ public sealed class LdifReader : IDisposable
             return value.AsString();
         try
         {
-            return StrictUtf8.GetString(bytes);
+            return RfcGrammar.StrictUtf8.GetString(bytes);
         }
         catch (DecoderFallbackException)
         {
