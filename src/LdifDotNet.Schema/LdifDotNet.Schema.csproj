@@ -9,4 +9,10 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- One implementation of the shared grammar helpers; linked rather than
+         referenced so this package stays dependency-free. -->
+    <Compile Include="..\LdifDotNet\RfcGrammar.cs" Link="RfcGrammar.cs" />
+  </ItemGroup>
+
 </Project>

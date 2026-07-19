@@ -13,6 +13,35 @@ public class SchemaParserTests
     }
 
     [Fact]
+    public void Rejects_undeclared_oid_macro_reference()
+    {
+        var ex = Assert.Throws<LdapSchemaParseException>(() => LdapSchema.Parse(
+            "attributetype ( undeclaredMacro:1 NAME 'x' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )"));
+        Assert.Contains("undeclaredMacro:1", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_non_numeric_oid_that_is_not_a_macro() =>
+        Assert.Throws<LdapSchemaParseException>(() => LdapSchema.Parse(
+            "objectclass ( notAnOid NAME 'x' SUP top STRUCTURAL )"));
+
+    [Fact]
+    public void Rejects_objectidentifier_with_undeclared_base() =>
+        Assert.Throws<LdapSchemaParseException>(() => LdapSchema.Parse(
+            "objectidentifier Sub base:2"));
+
+    [Fact]
+    public void Declared_macros_still_expand_transitively()
+    {
+        var schema = LdapSchema.Parse(
+            "objectidentifier Base 1.2.3\n" +
+            "objectidentifier Sub Base:4\n" +
+            "attributetype ( Sub:5 NAME 'x' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )\n");
+
+        Assert.Equal("1.2.3.4.5", schema.AttributeTypes[0].Oid);
+    }
+
+    [Fact]
     public void Load_rejects_invalid_utf8_bytes()
     {
         string dir = Directory.CreateTempSubdirectory("ldifdotnet-schema-tests").FullName;

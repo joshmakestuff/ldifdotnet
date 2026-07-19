@@ -4,13 +4,6 @@ using System.Text;
 
 namespace LdifDotNet;
 
-file static class DnStrictUtf8
-{
-    // RFC 4514 requires DN strings to be valid UTF-8; reject invalid octets rather
-    // than decode them to U+FFFD (which collapses distinct invalid inputs to one value).
-    public static readonly UTF8Encoding Instance = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-}
-
 /// <summary>
 /// RFC 4514 distinguished-name composition: escape attribute values, build RDNs
 /// and DNs from parts, and parse a DN string into its ordered components. This is
@@ -74,7 +67,7 @@ public static class Dn
                 return;
             try
             {
-                result.Append(DnStrictUtf8.Instance.GetString(hexRun.ToArray()));
+                result.Append(RfcGrammar.StrictUtf8.GetString(hexRun.ToArray()));
             }
             catch (DecoderFallbackException)
             {
@@ -216,23 +209,7 @@ public static class Dn
             }
             return true;
         }
-        return IsNumericOid(type);
-    }
-
-    /// <summary>RFC 4512 numericoid: 1*DIGIT *("." 1*DIGIT).</summary>
-    private static bool IsNumericOid(string type)
-    {
-        bool expectDigit = true;
-        foreach (char c in type)
-        {
-            if (char.IsAsciiDigit(c))
-                expectDigit = false;
-            else if (c == '.' && !expectDigit)
-                expectDigit = true;
-            else
-                return false;
-        }
-        return type.Length > 0 && !expectDigit;
+        return RfcGrammar.IsNumericOid(type);
     }
 
     /// <summary>
