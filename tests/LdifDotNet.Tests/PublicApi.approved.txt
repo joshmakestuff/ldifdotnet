@@ -125,6 +125,7 @@ namespace LdifDotNet
     {
         public LdifWriterOptions() { }
         public bool IncludeVersionLine { get; init; }
+        public bool ValidateDns { get; init; }
         public int? WrapColumn { get; init; }
     }
     public sealed class RelativeDistinguishedName

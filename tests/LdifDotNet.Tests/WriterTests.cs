@@ -435,6 +435,87 @@ public class WriterTests
         Assert.Equal("weird", reparsed.Attributes[0].Values[0].AsString());
     }
 
+    [Theory]
+    [InlineData("o=Acme; Inc.,c=US")]   // the #43 slapd-fatal DN
+    [InlineData("not a dn")]
+    [InlineData("cn=a\"b,dc=x")]
+    public void Rejects_invalid_dn_by_default(string dn)
+    {
+        var record = new LdifContentRecord(dn, new LdifAttribute("o", "x"));
+
+        var ex = Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+        Assert.Contains("ValidateDns", ex.Message);
+    }
+
+    [Fact]
+    public void ValidateDns_false_writes_dn_verbatim()
+    {
+        var record = new LdifContentRecord("o=Acme; Inc.,c=US", new LdifAttribute("o", "x"));
+
+        string ldif = LdifWriter.WriteToString([record], new LdifWriterOptions { ValidateDns = false });
+
+        Assert.Contains("dn: o=Acme; Inc.,c=US\n", ldif);
+    }
+
+    [Fact]
+    public void Ber_hexstring_dn_from_foreign_ldif_needs_the_opt_out()
+    {
+        // Legal RFC 4514, deliberately unsupported by Dn.Parse; the reader
+        // accepts it opaquely, so the opt-out is the round-trip escape hatch.
+        string foreign = "dn: 1.3.6.1.4.1.1466.0=#04024869,dc=x\ncn: x\n";
+        var records = LdifReader.Parse(foreign);
+
+        Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString(records));
+
+        string rewritten = LdifWriter.WriteToString(
+            records, new LdifWriterOptions { ValidateDns = false, IncludeVersionLine = false });
+        Assert.Equal(foreign, rewritten);
+    }
+
+    [Fact]
+    public void Rejects_multi_component_newrdn()
+    {
+        var record = new LdifModDnRecord("cn=a,dc=x", "cn=b,dc=y", deleteOldRdn: true);
+
+        var ex = Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+        Assert.Contains("single RDN", ex.Message);
+    }
+
+    [Fact]
+    public void Accepts_multi_valued_rdn_as_newrdn()
+    {
+        var record = new LdifModDnRecord("cn=a,dc=x", "ou=Sales+cn=B", deleteOldRdn: false);
+
+        Assert.Contains("newrdn: ou=Sales+cn=B\n", LdifWriter.WriteToString([record]));
+    }
+
+    [Fact]
+    public void Rejects_invalid_newsuperior()
+    {
+        var record = new LdifModDnRecord("cn=a,dc=x", "cn=b", deleteOldRdn: false, newSuperior: "o=Acme; Inc.,c=US");
+
+        var ex = Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+        Assert.Contains("newsuperior", ex.Message);
+    }
+
+    [Fact]
+    public void Escaped_dn_writes_with_validation_on()
+    {
+        var record = new LdifContentRecord("cn=Smith\\, Jr.,dc=x", new LdifAttribute("cn", "x"));
+
+        Assert.Contains("dn: cn=Smith\\, Jr.,dc=x\n", LdifWriter.WriteToString([record]));
+    }
+
+    [Fact]
+    public void Empty_dn_is_valid_with_validation_on()
+    {
+        // The root DSE serializes as a bare "dn:" line; an empty DN is the
+        // empty RDN sequence, not an error.
+        string ldif = LdifWriter.WriteToString([new LdifContentRecord("", new LdifAttribute("objectClass", "top"))]);
+
+        Assert.Contains("\ndn:\n", ldif);
+    }
+
     [Fact]
     public void Invalid_record_writes_nothing()
     {
