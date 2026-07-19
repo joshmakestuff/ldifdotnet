@@ -146,7 +146,9 @@ public static class Dn
     /// Multi-valued RDNs (<c>a=1+b=2</c>) are represented as one
     /// <see cref="RelativeDistinguishedName"/> with several attributes rather than being
     /// flattened. Insignificant whitespace around separators is tolerated. An empty or
-    /// whitespace-only string yields an empty list; a component missing <c>=</c> throws.
+    /// whitespace-only string yields an empty list; a component missing <c>=</c> throws,
+    /// as does a value containing a character RFC 4514 requires escaped (<c>" ; &lt; &gt;</c>
+    /// or NUL) — <see cref="Parse"/> accepts exactly what <see cref="EscapeValue"/> emits.
     /// </summary>
     public static IReadOnlyList<RelativeDistinguishedName> Parse(string distinguishedName)
     {
@@ -183,6 +185,12 @@ public static class Dn
                     // reserialize (the '#' would be escaped), so reject it explicitly.
                     throw new ArgumentException(
                         $"DN component '{trimmed}' uses a BER hexstring value ('#...'), which is not supported. Escape the leading '#' if it is literal.",
+                        nameof(distinguishedName));
+                }
+                if (FirstUnescapedSpecial(rawValue) is char special)
+                {
+                    throw new ArgumentException(
+                        $"DN component '{trimmed}' has an unescaped {(special == '\0' ? "NUL" : $"'{special}'")}; RFC 4514 requires it escaped.",
                         nameof(distinguishedName));
                 }
                 attributes.Add(new AttributeTypeAndValue(type, UnescapeValue(rawValue)));
@@ -225,6 +233,27 @@ public static class Dn
                 return false;
         }
         return type.Length > 0 && !expectDigit;
+    }
+
+    /// <summary>
+    /// Finds the first character RFC 4514 §3 forbids unescaped inside a value
+    /// (its <c>stringchar</c> excludes <c>" ; &lt; &gt;</c> and NUL). The other
+    /// excluded characters — <c>, + \</c> — never reach a raw value: unescaped
+    /// they split RDNs/attributes or introduce an escape.
+    /// </summary>
+    private static char? FirstUnescapedSpecial(string rawValue)
+    {
+        bool escaped = false;
+        foreach (char c in rawValue)
+        {
+            if (escaped)
+                escaped = false;
+            else if (c == '\\')
+                escaped = true;
+            else if (c is '"' or ';' or '<' or '>' or '\0')
+                return c;
+        }
+        return null;
     }
 
     private static bool IsHex(char c) => c is (>= '0' and <= '9') or (>= 'a' and <= 'f') or (>= 'A' and <= 'F');
