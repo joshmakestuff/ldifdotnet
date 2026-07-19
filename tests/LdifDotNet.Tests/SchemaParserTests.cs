@@ -12,6 +12,27 @@ public class SchemaParserTests
         return data;
     }
 
+    [Fact]
+    public void Load_rejects_invalid_utf8_bytes()
+    {
+        string dir = Directory.CreateTempSubdirectory("ldifdotnet-schema-tests").FullName;
+        try
+        {
+            // Mirrors the LDIF reader: mis-encoded schema files fail loudly
+            // instead of silently decoding definitions through U+FFFD.
+            string path = Path.Combine(dir, "bad.schema");
+            File.WriteAllBytes(path, [.. "# comment "u8, 0xFF, .. "\nattributetype ( 1.2.3 NAME 'x' )\n"u8]);
+
+            var ex = Assert.Throws<LdapSchemaParseException>(() => LdapSchema.Load(path));
+            Assert.Contains("UTF-8", ex.Message);
+            Assert.Contains("bad.schema", ex.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     /// <summary>
     /// The parser must handle the entire vendored corpus, and must find exactly as
     /// many definitions as a naive line scan does — nothing silently dropped.
