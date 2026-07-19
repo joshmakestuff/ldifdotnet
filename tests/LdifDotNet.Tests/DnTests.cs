@@ -170,6 +170,36 @@ public class DnTests
         Assert.Throws<ArgumentException>(() => Dn.Parse(dn));
 
     [Theory]
+    [InlineData("o=Acme; Inc.,c=US")]  // issue #43 repro: slapd rejects this as an olcSuffix
+    [InlineData("dc=exa;mple,dc=org")]
+    [InlineData("c=US;x=y")]
+    [InlineData("cn=a\"b,dc=x")]
+    [InlineData("cn=a<b,dc=x")]
+    [InlineData("cn=a>b,dc=x")]
+    [InlineData("cn=a\0b,dc=x")]
+    public void Parse_rejects_unescaped_specials_in_values(string dn) =>
+        Assert.Throws<ArgumentException>(() => Dn.Parse(dn));
+
+    // The Parse/EscapeValue round-trip contract: every character EscapeValue escapes
+    // anywhere in a value is rejected by Parse when unescaped, and accepted when escaped.
+    [Theory]
+    [InlineData('"')]
+    [InlineData('+')]
+    [InlineData(',')]
+    [InlineData(';')]
+    [InlineData('<')]
+    [InlineData('>')]
+    [InlineData('\\')]
+    [InlineData('\0')]
+    public void Parse_accepts_exactly_what_EscapeValue_emits(char special)
+    {
+        string value = $"a{special}b";
+
+        Assert.Throws<ArgumentException>(() => Dn.Parse($"cn={value},dc=x"));
+        Assert.Equal(value, Dn.Parse($"cn={Dn.EscapeValue(value)},dc=x")[0].Value);
+    }
+
+    [Theory]
     [InlineData("cn=x", "cn")]
     [InlineData("cn-2=x", "cn-2")]
     [InlineData("1.3.6.1.4.1.1466.0=x", "1.3.6.1.4.1.1466.0")]
