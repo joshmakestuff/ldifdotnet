@@ -53,6 +53,45 @@ public class ReaderTests
     }
 
     [Fact]
+    public void ReadFile_rejects_invalid_utf8_bytes()
+    {
+        string dir = Directory.CreateTempSubdirectory("ldifdotnet-reader-tests").FullName;
+        try
+        {
+            // Same bytes Rejects_base64_dn_with_invalid_utf8 uses: the plain-text
+            // and base64 paths must agree that invalid UTF-8 is a parse error,
+            // not a silent U+FFFD substitution.
+            string path = Path.Combine(dir, "invalid.ldif");
+            File.WriteAllBytes(path, [.. "dn: cn="u8, 0xFF, 0xFE, 0xFD, .. ",dc=x\ncn: z\n"u8]);
+
+            var ex = Assert.Throws<LdifParseException>(() => LdifReader.ReadFile(path).ToList());
+            Assert.Contains("UTF-8", ex.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ReadFile_reads_valid_multibyte_utf8()
+    {
+        string dir = Directory.CreateTempSubdirectory("ldifdotnet-reader-tests").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "valid.ldif");
+            File.WriteAllBytes(path, "dn: dc=x\ndescription: 営業部\n"u8.ToArray());
+
+            var record = Assert.IsType<LdifContentRecord>(Assert.Single(LdifReader.ReadFile(path).ToList()));
+            Assert.Equal("営業部", record["description"]!.Values[0].AsString());
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Rejects_relative_url_reference()
     {
         string ldif = "dn: dc=x\njpegPhoto:< relative/photo.jpg\n";
