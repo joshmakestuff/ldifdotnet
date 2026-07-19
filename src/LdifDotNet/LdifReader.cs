@@ -5,6 +5,9 @@ namespace LdifDotNet;
 /// <summary>
 /// Streaming, forward-only LDIF reader (RFC 2849). Tolerant of LF and CRLF line
 /// endings, missing version lines, and mixed content/change records in one file.
+/// Input must be valid UTF-8 (RFC 2849): file-based readers reject invalid bytes
+/// as a parse error rather than silently substituting U+FFFD, which would
+/// collapse distinct invalid inputs into one decoded value.
 /// </summary>
 public sealed class LdifReader : IDisposable
 {
@@ -55,10 +58,11 @@ public sealed class LdifReader : IDisposable
         }
     }
 
-    /// <summary>Lazily reads all records from an LDIF file.</summary>
+    /// <summary>Lazily reads all records from an LDIF file. The file must be valid
+    /// UTF-8; invalid bytes are a parse error (see the class summary).</summary>
     public static IEnumerable<LdifRecord> ReadFile(string path)
     {
-        using var reader = new LdifReader(new StreamReader(path), ownsReader: true);
+        using var reader = new LdifReader(new StreamReader(path, StrictUtf8), ownsReader: true);
         foreach (var record in reader.ReadAll())
             yield return record;
     }
@@ -118,7 +122,7 @@ public sealed class LdifReader : IDisposable
 
         while (true)
         {
-            string? physical = _reader.ReadLine();
+            string? physical = ReadPhysicalLine();
             if (physical is null)
                 break;
             _lineNumber++;
@@ -156,6 +160,24 @@ public sealed class LdifReader : IDisposable
 
         CommitCurrent();
         return lines.Count == 0 ? null : lines;
+    }
+
+    /// <summary>
+    /// Reads one physical line, surfacing invalid UTF-8 from a strict decoder
+    /// (see <see cref="ReadFile"/>) as a parse error. The decoder works on
+    /// buffered blocks, so the reported line is where decoding stopped — the
+    /// invalid byte is at or after it.
+    /// </summary>
+    private string? ReadPhysicalLine()
+    {
+        try
+        {
+            return _reader.ReadLine();
+        }
+        catch (DecoderFallbackException)
+        {
+            throw new LdifParseException("input is not valid UTF-8 (RFC 2849 requires it)", _lineNumber + 1);
+        }
     }
 
     private LdifRecord ParseRecord(List<LogicalLine> lines, int i)
