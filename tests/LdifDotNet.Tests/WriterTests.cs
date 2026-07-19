@@ -369,6 +369,72 @@ public class WriterTests
         Assert.Equal(reference, reparsed["jpegPhoto"]!.Values[0].Url!.OriginalString);
     }
 
+    [Theory]
+    [InlineData("changetype")]
+    [InlineData("CHANGETYPE")]  // the reader matches names case-insensitively
+    public void Rejects_content_record_that_would_read_back_as_change_record(string name)
+    {
+        var record = new LdifContentRecord("cn=x,dc=y", new LdifAttribute(name, "delete"));
+
+        var ex = Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+        Assert.Contains("change record", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_content_record_with_control_attributes_then_changetype()
+    {
+        // Mirrors the reader: leading "control" lines are skipped before the
+        // changetype check, so this shape also reads back as a change record.
+        var record = new LdifContentRecord("cn=x,dc=y",
+            new LdifAttribute("control", "1.2.3"),
+            new LdifAttribute("changetype", "add"),
+            new LdifAttribute("cn", "x"));
+
+        Assert.Throws<ArgumentException>(() => LdifWriter.WriteToString([record]));
+    }
+
+    [Fact]
+    public void Changetype_attribute_after_another_attribute_round_trips_as_content()
+    {
+        var record = new LdifContentRecord("cn=x,dc=y",
+            new LdifAttribute("cn", "x"),
+            new LdifAttribute("changetype", "delete"));
+
+        string ldif = LdifWriter.WriteToString([record]);
+
+        var reparsed = Assert.IsType<LdifContentRecord>(Assert.Single(LdifReader.Parse(ldif)));
+        Assert.Equal("delete", reparsed["changetype"]!.Values[0].AsString());
+    }
+
+    [Fact]
+    public void Control_attributes_without_changetype_round_trip_as_content()
+    {
+        var record = new LdifContentRecord("cn=x,dc=y",
+            new LdifAttribute("control", "v"),
+            new LdifAttribute("cn", "x"));
+
+        string ldif = LdifWriter.WriteToString([record]);
+
+        var reparsed = Assert.IsType<LdifContentRecord>(Assert.Single(LdifReader.Parse(ldif)));
+        Assert.Equal("v", reparsed["control"]!.Values[0].AsString());
+    }
+
+    [Fact]
+    public void Changetype_attribute_inside_add_record_round_trips_as_attribute()
+    {
+        // In an add record the real "changetype: add" line comes first, so a
+        // literal changetype attribute is unambiguous and stays an attribute.
+        var record = new LdifAddRecord("cn=x,dc=y",
+            new LdifAttribute("changetype", "weird"),
+            new LdifAttribute("cn", "x"));
+
+        string ldif = LdifWriter.WriteToString([record]);
+
+        var reparsed = Assert.IsType<LdifAddRecord>(Assert.Single(LdifReader.Parse(ldif)));
+        Assert.Equal(2, reparsed.Attributes.Count);
+        Assert.Equal("weird", reparsed.Attributes[0].Values[0].AsString());
+    }
+
     [Fact]
     public void Invalid_record_writes_nothing()
     {
