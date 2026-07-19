@@ -12,16 +12,18 @@ namespace LdifDotNet;
 /// mix content and change records, content and add records need at least one
 /// attribute, attribute descriptions and control OIDs must match the RFC
 /// grammar, URL values must not contain characters a url line cannot carry
-/// (control characters, leading/trailing spaces), and a content record may not
+/// (control characters, leading/trailing spaces), a content record may not
 /// begin with attributes that would read back as a change record ("control"
-/// lines then "changetype"). The record model itself is deliberately
-/// permissive; this writer is the enforcement point.
+/// lines then "changetype"), and DN-valued fields must parse as RFC 4514
+/// (unless <see cref="LdifWriterOptions.ValidateDns"/> is disabled). The record
+/// model itself is deliberately permissive; this writer is the enforcement point.
 /// </summary>
 public sealed class LdifWriter : IDisposable
 {
     private readonly TextWriter _writer;
     private readonly int? _wrapColumn;
     private readonly bool _includeVersionLine;
+    private readonly bool _validateDns;
     private bool _firstRecord = true;
     private bool? _changeDocument;
 
@@ -35,6 +37,7 @@ public sealed class LdifWriter : IDisposable
             throw new ArgumentOutOfRangeException(nameof(options), "WrapColumn must be at least 2, or null to disable folding.");
         _wrapColumn = options.WrapColumn;
         _includeVersionLine = options.IncludeVersionLine;
+        _validateDns = options.ValidateDns;
     }
 
     /// <summary>Writes one record, validating first that it can be serialized as
@@ -42,7 +45,7 @@ public sealed class LdifWriter : IDisposable
     public void WriteRecord(LdifRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
-        ValidateRecord(record);
+        ValidateRecord(record, _validateDns);
 
         bool isChange = record is LdifChangeRecord;
         if (_changeDocument is { } changeDocument && changeDocument != isChange)
@@ -147,8 +150,11 @@ public sealed class LdifWriter : IDisposable
     /// Rejects records the writer could only serialize as invalid RFC 2849.
     /// Runs before any output so a failed record never leaves partial lines.
     /// </summary>
-    private static void ValidateRecord(LdifRecord record)
+    private static void ValidateRecord(LdifRecord record, bool validateDns)
     {
+        if (validateDns)
+            ValidateDnFields(record);
+
         if (record is LdifChangeRecord change)
         {
             foreach (var control in change.Controls)
@@ -206,6 +212,40 @@ public sealed class LdifWriter : IDisposable
 
             default:
                 throw new ArgumentException($"Unknown record type {record.GetType()}.", nameof(record));
+        }
+    }
+
+    /// <summary>
+    /// Validates every DN-valued field through <see cref="Dn.Parse"/> — one
+    /// definition of "valid DN" shared with the front-door validators. newrdn is
+    /// additionally required to be exactly one RDN (RFC 2849 rdn), not a full DN.
+    /// </summary>
+    private static void ValidateDnFields(LdifRecord record)
+    {
+        ValidateDn(record.Dn, "dn");
+        if (record is LdifModDnRecord modDn)
+        {
+            if (ParseDnField(modDn.NewRdn, "newrdn").Count != 1)
+                throw new ArgumentException($"newrdn '{modDn.NewRdn}' must be a single RDN, not a multi-component DN.", nameof(record));
+            if (modDn.NewSuperior is { } newSuperior)
+                ValidateDn(newSuperior, "newsuperior");
+        }
+    }
+
+    private static void ValidateDn(string value, string field) => ParseDnField(value, field);
+
+    private static IReadOnlyList<RelativeDistinguishedName> ParseDnField(string value, string field)
+    {
+        try
+        {
+            return Dn.Parse(value);
+        }
+        catch (ArgumentException e)
+        {
+            throw new ArgumentException(
+                $"The {field} '{value}' is not a valid RFC 4514 DN: {e.Message} Set LdifWriterOptions.ValidateDns = false to write it verbatim.",
+                nameof(value),
+                e);
         }
     }
 
@@ -456,4 +496,14 @@ public sealed class LdifWriterOptions
 
     /// <summary>Whether to emit "version: 1" before the first record. Default true.</summary>
     public bool IncludeVersionLine { get; init; } = true;
+
+    /// <summary>
+    /// Whether DN-valued fields (dn, newrdn, newsuperior) must parse under
+    /// <see cref="Dn.Parse"/> before a record is written. Default true: RFC 2849
+    /// requires a distinguishedName there, and an invalid DN is typically only
+    /// discovered later by the consuming server. Disable to write DNs verbatim —
+    /// e.g. to round-trip foreign LDIF whose DNs use constructs
+    /// <see cref="Dn.Parse"/> does not support, such as BER hexstring values.
+    /// </summary>
+    public bool ValidateDns { get; init; } = true;
 }
