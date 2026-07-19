@@ -79,11 +79,33 @@ internal sealed class SchemaParser
         string[] parts = body.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 2)
             throw new LdapSchemaParseException($"line {lineNumber}: malformed objectidentifier directive", lineNumber);
-        _oidMacros[parts[0]] = ResolveOid(parts[1]);
+        string resolved = ExpandOidMacros(parts[1]);
+        if (!RfcGrammar.IsNumericOid(resolved))
+        {
+            throw new LdapSchemaParseException(
+                $"line {lineNumber}: objectidentifier '{parts[0]}' resolves to '{resolved}', which is not a numeric OID or a declared macro reference",
+                lineNumber);
+        }
+        _oidMacros[parts[0]] = resolved;
+    }
+
+    /// <summary>
+    /// Resolves the OID token of a definition: macro references expand, and the
+    /// result must be a numeric OID. An undeclared macro fails here — slapd would
+    /// reject it at load, so passing it downstream as a bogus OID string would
+    /// just relocate the error.
+    /// </summary>
+    private string ResolveOid(Cursor cursor)
+    {
+        string oid = cursor.ReadValue();
+        string resolved = ExpandOidMacros(oid);
+        if (!RfcGrammar.IsNumericOid(resolved))
+            throw cursor.Error($"OID '{oid}' is not a numeric OID or a declared objectidentifier macro reference");
+        return resolved;
     }
 
     /// <summary>Expands "macro" or "macro:suffix" references against declared OID macros.</summary>
-    private string ResolveOid(string oid)
+    private string ExpandOidMacros(string oid)
     {
         int colon = oid.IndexOf(':', StringComparison.Ordinal);
         if (colon >= 0)
@@ -102,7 +124,7 @@ internal sealed class SchemaParser
     private LdapAttributeType ParseAttributeType(Cursor cursor)
     {
         cursor.Expect(TokenKind.LParen);
-        var result = new LdapAttributeType { Oid = ResolveOid(cursor.ReadValue()) };
+        var result = new LdapAttributeType { Oid = ResolveOid(cursor) };
         var extensions = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 
         while (true)
@@ -153,7 +175,7 @@ internal sealed class SchemaParser
     private LdapObjectClass ParseObjectClass(Cursor cursor)
     {
         cursor.Expect(TokenKind.LParen);
-        var result = new LdapObjectClass { Oid = ResolveOid(cursor.ReadValue()) };
+        var result = new LdapObjectClass { Oid = ResolveOid(cursor) };
         var extensions = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 
         while (true)

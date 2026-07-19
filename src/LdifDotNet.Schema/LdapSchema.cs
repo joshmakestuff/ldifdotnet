@@ -9,10 +9,6 @@ namespace LdifDotNet.Schema;
 /// </summary>
 public sealed class LdapSchema
 {
-    // Reject invalid octets rather than decode them to U+FFFD, which would
-    // silently corrupt definitions read from a mis-encoded file.
-    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-
     private readonly List<LdapAttributeType> _attributeTypes;
     private readonly List<LdapObjectClass> _objectClasses;
     private readonly Dictionary<string, LdapAttributeType> _attributeIndex = new(StringComparer.OrdinalIgnoreCase);
@@ -50,7 +46,7 @@ public sealed class LdapSchema
             string text;
             try
             {
-                text = File.ReadAllText(path, StrictUtf8);
+                text = File.ReadAllText(path, RfcGrammar.StrictUtf8);
             }
             catch (DecoderFallbackException)
             {
