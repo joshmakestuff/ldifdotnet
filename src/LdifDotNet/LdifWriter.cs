@@ -10,9 +10,10 @@ namespace LdifDotNet;
 /// Lines are always terminated with LF. Records that cannot be serialized as
 /// valid RFC 2849 are rejected before anything is written: a document may not
 /// mix content and change records, content and add records need at least one
-/// attribute, and attribute descriptions and control OIDs must match the RFC
-/// grammar. The record model itself is deliberately permissive; this writer is
-/// the enforcement point.
+/// attribute, attribute descriptions and control OIDs must match the RFC
+/// grammar, and URL values must not contain characters a url line cannot carry
+/// (control characters, leading/trailing spaces). The record model itself is
+/// deliberately permissive; this writer is the enforcement point.
 /// </summary>
 public sealed class LdifWriter : IDisposable
 {
@@ -155,6 +156,13 @@ public sealed class LdifWriter : IDisposable
             }
         }
 
+        if (FirstUnserializableUrlChar(AllValues(record)) is { } badUrlChar)
+        {
+            throw new ArgumentException(
+                $"A URL value contains a control character or leading/trailing space (U+{(int)badUrlChar:X4}); a url line has no escape or base64 form, so the record cannot be serialized as valid RFC 2849. Percent-encode it (e.g. %0A for a newline, %20 for a space).",
+                nameof(record));
+        }
+
         switch (record)
         {
             case LdifContentRecord content:
@@ -191,6 +199,62 @@ public sealed class LdifWriter : IDisposable
             default:
                 throw new ArgumentException($"Unknown record type {record.GetType()}.", nameof(record));
         }
+    }
+
+    /// <summary>Every value the record would emit: attribute values, modification
+    /// values, and control values. DN-valued fields are strings, not values.</summary>
+    private static IEnumerable<LdifValue> AllValues(LdifRecord record)
+    {
+        if (record is LdifChangeRecord change)
+        {
+            foreach (var control in change.Controls)
+            {
+                if (control.Value is { } value)
+                    yield return value;
+            }
+        }
+
+        IReadOnlyList<LdifAttribute> attributes = record switch
+        {
+            LdifContentRecord content => content.Attributes,
+            LdifAddRecord add => add.Attributes,
+            _ => [],
+        };
+        foreach (var attribute in attributes)
+            foreach (var value in attribute.Values)
+                yield return value;
+
+        if (record is LdifModifyRecord modify)
+        {
+            foreach (var mod in modify.Modifications)
+                foreach (var value in mod.Values)
+                    yield return value;
+        }
+    }
+
+    /// <summary>
+    /// The first character that makes a URL value unserializable, or null. A url
+    /// line has no escape or base64 form, so a control character (a newline would
+    /// inject document structure) or a leading/trailing space (the reader trims
+    /// both) cannot be carried. Interior spaces and non-ASCII are emitted as
+    /// given; percent-encode them for strictly conformant RFC 2849 output.
+    /// </summary>
+    private static char? FirstUnserializableUrlChar(IEnumerable<LdifValue> values)
+    {
+        foreach (var value in values)
+        {
+            if (!value.IsUrl)
+                continue;
+            string url = value.Url!.OriginalString;
+            foreach (char c in url)
+            {
+                if (c is < ' ' or '\x7F')
+                    return c;
+            }
+            if (url.StartsWith(' ') || url.EndsWith(' '))
+                return ' ';
+        }
+        return null;
     }
 
     private static string? FirstInvalidAttributeName(IReadOnlyList<LdifAttribute> attributes)
