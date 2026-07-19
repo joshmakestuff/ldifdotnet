@@ -14,7 +14,7 @@ current LTS only (net10.0, C# 14); the PowerShell module requires pwsh 7.6+
 - Differential tests against real OpenLDAP: skipped unless `LDIF_DIFFERENTIAL=1`
   and slapd tools are installed (the Linux CI job does this)
 - Try the PowerShell module locally: `Import-Module
-  ./src/LdifDotNet.PowerShell/bin/Debug/net8.0/LdifDotNet.PowerShell.psd1`
+  ./src/LdifDotNet.PowerShell/bin/Debug/net10.0/LdifDotNet.PowerShell.psd1`
   (pwsh e2e tests run via `dotnet test` wherever pwsh is on PATH)
 
 ## Invariants — mechanically enforced, do not weaken
