@@ -35,7 +35,7 @@ values come from your formatters, then example pools, then
 well-known-attribute heuristics, then syntax-aware generation.
 
 `Formatters` templates use [Bogus handlebars
-tokens](https://github.com/bchavez/Bogus#the-great-c-example) —
+tokens](https://github.com/bchavez/Bogus#parse-handlebars) —
 `{{dataset.method(args)}}`, case-insensitive; text outside tokens is emitted
 verbatim. A formatter overrides all built-in generation for its attribute and
 its output is not checked against the attribute's syntax. Tokens draw from the
