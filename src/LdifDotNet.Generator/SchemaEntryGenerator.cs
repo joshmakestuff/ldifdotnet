@@ -44,12 +44,14 @@ public sealed class SchemaEntryGenerator
         _options = options ?? new SchemaGeneratorOptions();
         if (_options.OptionalAttributeFill is < 0 or > 1)
             throw new ArgumentOutOfRangeException(nameof(options), "OptionalAttributeFill must be between 0 and 1.");
-        _faker = new Faker(_options.Locale);
+        _faker = CreateFaker(_options.Locale);
         if (_options.Seed is { } seed)
             _faker.Random = new Randomizer(seed);
-        _faker.DateTimeReference = GenerationEpoch;
         ValidateFormatters(_options, nameof(options));
     }
+
+    private static Faker CreateFaker(string locale) =>
+        new(locale) { DateTimeReference = GenerationEpoch };
 
     /// <summary>
     /// Fails fast on unusable formatter templates. Probing uses a throwaway faker
@@ -60,20 +62,52 @@ public sealed class SchemaEntryGenerator
         if (options.Formatters.Count == 0)
             return;
 
-        var probe = new Faker(options.Locale) { Random = new Randomizer(0), DateTimeReference = GenerationEpoch };
+        var probe = CreateFaker(options.Locale);
+        probe.Random = new Randomizer(0);
         foreach (var (attribute, template) in options.Formatters)
         {
             if (string.IsNullOrEmpty(template))
                 throw new ArgumentException($"Formatter for attribute '{attribute}' has a null or empty template.", paramName);
+            string probeOutput;
             try
             {
-                probe.Parse(template);
+                probeOutput = ParseTemplate(probe, template);
             }
             catch (Exception ex) when (ex is ArgumentException or FormatException or InvalidCastException or OverflowException)
             {
                 throw new ArgumentException(
                     $"Formatter template for attribute '{attribute}' is invalid: \"{template}\" ({ex.Message})", paramName, ex);
             }
+            // An array/collection-returning token stringifies as its .NET type name;
+            // that is never the value the template author meant.
+            if (probeOutput.Contains("System.", StringComparison.Ordinal)
+                && (probeOutput.Contains("[]", StringComparison.Ordinal) || probeOutput.Contains('`', StringComparison.Ordinal)))
+            {
+                throw new ArgumentException(
+                    $"Formatter template for attribute '{attribute}' uses a token that returns a non-scalar value" +
+                    $" (produced \"{probeOutput}\"): \"{template}\". Use a scalar token (e.g. {{{{lorem.word}}}}, not" +
+                    " {{lorem.words}}); for literal text, use ExampleValues instead.", paramName);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Interprets a formatter template under the invariant culture: the Bogus
+    /// tokenizer stringifies non-string token results with the current culture,
+    /// which would make seeded output vary by machine culture (under ar-SA,
+    /// {{date.past}} renders an Umm al-Qura calendar date).
+    /// </summary>
+    private static string ParseTemplate(Faker faker, string template)
+    {
+        var original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        try
+        {
+            return faker.Parse(template);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
         }
     }
 
@@ -217,6 +251,13 @@ public sealed class SchemaEntryGenerator
     private string UniqueRdnValue(string rdnAttribute, string parentDn)
     {
         string candidate = GenerateValue(rdnAttribute, parentDn, required: true)?.AsString() ?? "entry";
+        // RFC 4514 permits an empty RDN value, so the writer's DN validation would
+        // pass it — but a real server rejects it. Fail here, naming the producer.
+        if (candidate.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"Generated RDN value for '{rdnAttribute}' is empty; the formatter or example pool for that attribute must produce a non-empty value.");
+        }
         var used = _usedRdnValues.TryGetValue($"{parentDn}\n{rdnAttribute}", out var set)
             ? set
             : _usedRdnValues[$"{parentDn}\n{rdnAttribute}"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -230,7 +271,7 @@ public sealed class SchemaEntryGenerator
     private LdifValue? GenerateValue(string attributeName, string parentDn, bool required)
     {
         if (_options.Formatters.TryGetValue(attributeName, out string? template))
-            return LdifValue.FromString(_faker.Parse(template));
+            return LdifValue.FromString(ParseTemplate(_faker, template));
 
         if (_options.ExampleValues.TryGetValue(attributeName, out var pool) && pool.Count > 0)
             return LdifValue.FromString(_faker.PickRandom<string>(pool));
@@ -416,9 +457,11 @@ public sealed class SchemaGeneratorOptions
     /// all built-in generation for that attribute, including
     /// <see cref="ExampleValues"/>, and its output is not checked against the
     /// attribute's declared syntax — the template author owns validity. Tokens
-    /// draw from the generator's seeded randomness (time tokens from a fixed
-    /// epoch), so seeded output remains deterministic per package version.
-    /// Malformed templates fail generator construction.
+    /// must return scalar values and are stringified with the invariant culture;
+    /// they draw from the generator's seeded randomness (time tokens from a fixed
+    /// epoch), so seeded output remains deterministic per package version
+    /// regardless of machine culture. Malformed templates fail generator
+    /// construction.
     /// </summary>
     public IDictionary<string, string> Formatters { get; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

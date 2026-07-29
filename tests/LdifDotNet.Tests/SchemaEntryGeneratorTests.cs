@@ -342,6 +342,70 @@ public class SchemaEntryGeneratorTests
     }
 
     [Fact]
+    public void Seeded_formatter_output_is_culture_invariant()
+    {
+        SchemaGeneratorOptions Options()
+        {
+            var options = new SchemaGeneratorOptions { Seed = 47, OptionalAttributeFill = 1.0 };
+            options.Formatters["description"] = "hired {{date.past}} balance {{finance.amount}}";
+            return options;
+        }
+
+        string RunUnder(string cultureName)
+        {
+            var original = CultureInfo.CurrentCulture;
+            CultureInfo.CurrentCulture = new CultureInfo(cultureName);
+            try
+            {
+                return LdifWriter.WriteToString(
+                    new SchemaEntryGenerator(CoreSchemas(), Options()).Entries("inetOrgPerson", 5, ParentDn));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = original;
+            }
+        }
+
+        // ar-SA formats dates in the Umm al-Qura calendar and uses U+066B as the
+        // decimal separator — the strongest counterexample if stringification ever
+        // reverts to the current culture.
+        Assert.Equal(RunUnder("en-US"), RunUnder("ar-SA"));
+    }
+
+    [Fact]
+    public void Non_scalar_formatter_token_fails_construction()
+    {
+        var options = new SchemaGeneratorOptions();
+        options.Formatters["cn"] = "{{lorem.words}}";   // string[] — stringifies as "System.String[]"
+
+        var ex = Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+        Assert.Contains("cn", ex.Message);
+        Assert.Contains("non-scalar", ex.Message);
+    }
+
+    [Fact]
+    public void Empty_formatter_rdn_value_fails_loud()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 1, RdnAttribute = "cn" };
+        options.Formatters["cn"] = "{{lorem.letter(0)}}";   // validates fine, always produces ""
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => generator.Entry("person", ParentDn));
+        Assert.Contains("cn", ex.Message);
+    }
+
+    [Fact]
+    public void Empty_pool_rdn_value_fails_loud()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 1, RdnAttribute = "cn" };
+        options.ExampleValues["cn"] = [""];
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => generator.Entry("person", ParentDn));
+        Assert.Contains("cn", ex.Message);
+    }
+
+    [Fact]
     public void Nul_in_rdn_value_is_hex_escaped()
     {
         var options = new SchemaGeneratorOptions { Seed = 1, RdnAttribute = "cn" };

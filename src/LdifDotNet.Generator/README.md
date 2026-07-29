@@ -38,7 +38,8 @@ well-known-attribute heuristics, then syntax-aware generation.
 tokens](https://github.com/bchavez/Bogus#parse-handlebars) —
 `{{dataset.method(args)}}`, case-insensitive; text outside tokens is emitted
 verbatim. A formatter overrides all built-in generation for its attribute and
-its output is not checked against the attribute's syntax. Tokens draw from the
-generator's seeded randomness (time tokens from a fixed epoch), so seeded
-output stays deterministic per package version; malformed templates fail
-construction.
+its output is not checked against the attribute's syntax. Tokens must return
+scalar values and are stringified with the invariant culture; they draw from
+the generator's seeded randomness (time tokens from a fixed epoch), so seeded
+output stays deterministic per package version regardless of machine culture.
+Malformed templates fail construction.
