@@ -14,3 +14,4 @@ M:System.Random.#ctor;Unseeded randomness breaks generator determinism. Use the 
 P:System.Environment.CurrentDirectory;Process CWD differs from the host's logical CWD (PowerShell, test runners). Resolve paths explicitly against a known root.
 M:System.IO.Directory.GetCurrentDirectory;Process CWD differs from the host's logical CWD (PowerShell, test runners). Resolve paths explicitly against a known root.
 M:System.IO.Directory.SetCurrentDirectory(System.String);Mutating process CWD breaks concurrent path resolution. Pass explicit paths instead.
+M:Bogus.Faker.Parse(System.String);Stringifies token results with the current culture, breaking cross-machine determinism. Call SchemaEntryGenerator.ParseTemplate (the sole blessed call site) inside an invariant-culture scope.
