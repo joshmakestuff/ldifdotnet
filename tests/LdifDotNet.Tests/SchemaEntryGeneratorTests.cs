@@ -194,6 +194,154 @@ public class SchemaEntryGeneratorTests
     }
 
     [Fact]
+    public void Formatter_overrides_pool_and_heuristic()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 23, OptionalAttributeFill = 1.0 };
+        options.AuxiliaryClasses.Add("eduPerson");
+        options.ExampleValues["eduPersonAffiliation"] = ["faculty"];
+        options.Formatters["eduPersonAffiliation"] = "affiliate-{{randomizer.replacenumbers(##)}}";
+        options.Formatters["cn"] = "{{name.lastName}} (generated)";
+        var generator = new SchemaEntryGenerator(CoreSchemas("schemas/contrib/eduperson.schema"), options);
+
+        var entry = generator.Entry("inetOrgPerson", ParentDn);
+
+        Assert.Matches("^affiliate-[0-9]{2}$", entry["eduPersonAffiliation"]!.Values[0].AsString());
+        Assert.EndsWith(" (generated)", entry["cn"]!.Values[0].AsString());
+    }
+
+    [Fact]
+    public void Formatter_output_is_not_syntax_gated()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 5 };
+        options.AuxiliaryClasses.Add("posixAccount");
+        options.Formatters["uidNumber"] = "not-a-number";
+        var generator = new SchemaEntryGenerator(CoreSchemas("schemas/contrib/rfc2307bis.schema"), options);
+
+        var entry = generator.Entry("account", ParentDn);
+
+        // The template author owns validity; INTEGER syntax must not veto the value.
+        Assert.Equal("not-a-number", entry["uidNumber"]!.Values[0].AsString());
+    }
+
+    [Fact]
+    public void Formatter_applies_to_rdn_with_uniqueness_suffix()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 2, RdnAttribute = "cn", OptionalAttributeFill = 0 };
+        options.Formatters["CN"] = "Fixed Name";   // key case differs from the attribute on purpose
+
+        var entries = new SchemaEntryGenerator(CoreSchemas(), options).Entries("person", 3, ParentDn);
+
+        Assert.Equal($"cn=Fixed Name,{ParentDn}", entries[0].Dn);
+        Assert.Equal($"cn=Fixed Name-2,{ParentDn}", entries[1].Dn);
+        Assert.Equal($"cn=Fixed Name-3,{ParentDn}", entries[2].Dn);
+    }
+
+    [Fact]
+    public void Formatter_rdn_value_is_dn_escaped()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 2, RdnAttribute = "cn", OptionalAttributeFill = 0 };
+        options.Formatters["cn"] = "Doe, John";
+
+        var entry = new SchemaEntryGenerator(CoreSchemas(), options).Entry("person", ParentDn);
+
+        Assert.StartsWith("cn=Doe\\, John,", entry.Dn);
+    }
+
+    [Fact]
+    public void Pattern_tokens_generate_and_literal_hash_is_preserved()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 19, OptionalAttributeFill = 1.0 };
+        options.Formatters["employeeNumber"] = "EMP#{{randomizer.replacenumbers(#####)}}";
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var entry = generator.Entry("inetOrgPerson", ParentDn);
+
+        Assert.Matches("^EMP#[0-9]{5}$", entry["employeeNumber"]!.Values[0].AsString());
+    }
+
+    [Fact]
+    public void Formatters_preserve_seeded_determinism_including_date_tokens()
+    {
+        SchemaGeneratorOptions Options()
+        {
+            var options = new SchemaGeneratorOptions { Seed = 31, OptionalAttributeFill = 0.5 };
+            options.Formatters["mail"] = "{{name.firstName}}.{{name.lastName}}@corp.example";
+            options.Formatters["description"] = "hired {{date.past}}";
+            return options;
+        }
+
+        string first = LdifWriter.WriteToString(
+            new SchemaEntryGenerator(CoreSchemas(), Options()).Entries("inetOrgPerson", 20, ParentDn));
+        string second = LdifWriter.WriteToString(
+            new SchemaEntryGenerator(CoreSchemas(), Options()).Entries("inetOrgPerson", 20, ParentDn));
+
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void Date_tokens_derive_from_fixed_epoch_not_the_clock()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 8, OptionalAttributeFill = 0 };
+        options.Formatters["sn"] = "{{date.past}}";
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        string value = generator.Entry("person", ParentDn)["sn"]!.Values[0].AsString();
+
+        // Within a year before the pinned 2000-01-01 epoch — never today-relative.
+        Assert.Matches("1999|2000", value);
+    }
+
+    [Fact]
+    public void Unknown_formatter_token_fails_construction()
+    {
+        var options = new SchemaGeneratorOptions();
+        options.Formatters["cn"] = "{{no.suchThing}}";
+
+        var ex = Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+        Assert.Contains("cn", ex.Message);
+        Assert.Contains("{{no.suchThing}}", ex.Message);
+    }
+
+    [Fact]
+    public void Unclosed_formatter_token_fails_construction()
+    {
+        var options = new SchemaGeneratorOptions();
+        options.Formatters["cn"] = "{{name.lastName";
+
+        var ex = Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+        Assert.Contains("cn", ex.Message);
+    }
+
+    [Fact]
+    public void Empty_formatter_template_fails_construction()
+    {
+        var options = new SchemaGeneratorOptions();
+        options.Formatters["cn"] = "";
+
+        Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+    }
+
+    [Fact]
+    public void Validating_extra_formatters_does_not_perturb_generation()
+    {
+        SchemaGeneratorOptions Options(bool extra)
+        {
+            var options = new SchemaGeneratorOptions { Seed = 41, OptionalAttributeFill = 0 };
+            options.Formatters["cn"] = "{{name.fullName}}";
+            if (extra)
+                options.Formatters["seeAlso"] = "{{name.lastName}}"; // validated but never generated at fill 0
+            return options;
+        }
+
+        string without = LdifWriter.WriteToString(
+            new SchemaEntryGenerator(CoreSchemas(), Options(extra: false)).Entries("person", 10, ParentDn));
+        string with = LdifWriter.WriteToString(
+            new SchemaEntryGenerator(CoreSchemas(), Options(extra: true)).Entries("person", 10, ParentDn));
+
+        Assert.Equal(without, with);
+    }
+
+    [Fact]
     public void Nul_in_rdn_value_is_hex_escaped()
     {
         var options = new SchemaGeneratorOptions { Seed = 1, RdnAttribute = "cn" };

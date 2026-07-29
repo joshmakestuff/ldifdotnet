@@ -9,7 +9,8 @@ namespace LdifDotNet.Generator;
 /// <summary>
 /// Generates fake entries for arbitrary LDAP schemas: MUST attributes are always
 /// filled, MAY attributes per <see cref="SchemaGeneratorOptions.OptionalAttributeFill"/>.
-/// Values come from (in priority order) user-supplied example pools, well-known
+/// Values come from (in priority order) user-supplied format templates
+/// (<see cref="SchemaGeneratorOptions.Formatters"/>), example pools, well-known
 /// attribute-name heuristics (only when compatible with the attribute's declared
 /// syntax), then the attribute's syntax OID. Required attributes whose syntax has
 /// no supported generator fall back to free text, which a server may reject;
@@ -23,6 +24,13 @@ public sealed class SchemaEntryGenerator
     /// risk emitting values a real server would reject.
     /// </summary>
     private const string SyntaxPrefix = "1.3.6.1.4.1.1466.115.121.1.";
+
+    /// <summary>
+    /// Fixed reference instant for all time-derived values. Bogus date tokens
+    /// (e.g. {{date.past}}) are relative to the faker's DateTimeReference — left
+    /// unset they read the wall clock, which would break seeded determinism.
+    /// </summary>
+    private static readonly DateTime GenerationEpoch = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     private readonly LdapSchema _schema;
     private readonly SchemaGeneratorOptions _options;
@@ -39,6 +47,34 @@ public sealed class SchemaEntryGenerator
         _faker = new Faker(_options.Locale);
         if (_options.Seed is { } seed)
             _faker.Random = new Randomizer(seed);
+        _faker.DateTimeReference = GenerationEpoch;
+        ValidateFormatters(_options, nameof(options));
+    }
+
+    /// <summary>
+    /// Fails fast on unusable formatter templates. Probing uses a throwaway faker
+    /// so validation can never perturb the real generator's random stream.
+    /// </summary>
+    private static void ValidateFormatters(SchemaGeneratorOptions options, string paramName)
+    {
+        if (options.Formatters.Count == 0)
+            return;
+
+        var probe = new Faker(options.Locale) { Random = new Randomizer(0), DateTimeReference = GenerationEpoch };
+        foreach (var (attribute, template) in options.Formatters)
+        {
+            if (string.IsNullOrEmpty(template))
+                throw new ArgumentException($"Formatter for attribute '{attribute}' has a null or empty template.", paramName);
+            try
+            {
+                probe.Parse(template);
+            }
+            catch (Exception ex) when (ex is ArgumentException or FormatException or InvalidCastException or OverflowException)
+            {
+                throw new ArgumentException(
+                    $"Formatter template for attribute '{attribute}' is invalid: \"{template}\" ({ex.Message})", paramName, ex);
+            }
+        }
     }
 
     /// <summary>Generates one entry of the given structural class under <paramref name="parentDn"/>.</summary>
@@ -193,6 +229,9 @@ public sealed class SchemaEntryGenerator
 
     private LdifValue? GenerateValue(string attributeName, string parentDn, bool required)
     {
+        if (_options.Formatters.TryGetValue(attributeName, out string? template))
+            return LdifValue.FromString(_faker.Parse(template));
+
         if (_options.ExampleValues.TryGetValue(attributeName, out var pool) && pool.Count > 0)
             return LdifValue.FromString(_faker.PickRandom<string>(pool));
 
@@ -328,7 +367,7 @@ public sealed class SchemaEntryGenerator
     /// <summary>Deterministic timestamp — derived from the seeded RNG, never the clock.</summary>
     private string RandomTimestamp()
     {
-        var timestamp = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+        var timestamp = GenerationEpoch
             .AddSeconds(_faker.Random.Long(0, 30L * 365 * 24 * 3600));
         return timestamp.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) + "Z";
     }
@@ -367,4 +406,20 @@ public sealed class SchemaGeneratorOptions
     /// </summary>
     public IDictionary<string, IReadOnlyList<string>> ExampleValues { get; } =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Per-attribute value format templates (case-insensitive names), e.g.
+    /// <c>"{{name.firstName}}.{{name.lastName}}@corp.example"</c> or
+    /// <c>"EMP-{{randomizer.replacenumbers(#####)}}"</c>. Tokens use Bogus
+    /// handlebars syntax (<c>{{dataset.method(args)}}</c>, case-insensitive);
+    /// text outside tokens is emitted verbatim. A matching formatter overrides
+    /// all built-in generation for that attribute, including
+    /// <see cref="ExampleValues"/>, and its output is not checked against the
+    /// attribute's declared syntax — the template author owns validity. Tokens
+    /// draw from the generator's seeded randomness (time tokens from a fixed
+    /// epoch), so seeded output remains deterministic per package version.
+    /// Malformed templates fail generator construction.
+    /// </summary>
+    public IDictionary<string, string> Formatters { get; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 }

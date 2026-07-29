@@ -25,9 +25,20 @@ var schema = LdapSchema.Load("core.schema", "cosine.schema", "inetorgperson.sche
 var options = new SchemaGeneratorOptions { Seed = 42, OptionalAttributeFill = 1.0 };
 options.AuxiliaryClasses.Add("eduPerson");
 options.ExampleValues["eduPersonAffiliation"] = ["faculty", "student", "staff"];
+options.Formatters["mail"] = "{{name.firstName}}.{{name.lastName}}@corp.example";
+options.Formatters["employeeNumber"] = "EMP-{{randomizer.replacenumbers(#####)}}";
 var entries = new SchemaEntryGenerator(schema, options).Entries("inetOrgPerson", 100, "ou=people,dc=example,dc=com");
 ```
 
 MUST attributes are always filled; MAY attributes per `OptionalAttributeFill`;
-values come from your example pools, then well-known-attribute heuristics,
-then syntax-aware generation.
+values come from your formatters, then example pools, then
+well-known-attribute heuristics, then syntax-aware generation.
+
+`Formatters` templates use [Bogus handlebars
+tokens](https://github.com/bchavez/Bogus#the-great-c-example) —
+`{{dataset.method(args)}}`, case-insensitive; text outside tokens is emitted
+verbatim. A formatter overrides all built-in generation for its attribute and
+its output is not checked against the attribute's syntax. Tokens draw from the
+generator's seeded randomness (time tokens from a fixed epoch), so seeded
+output stays deterministic per package version; malformed templates fail
+construction.
