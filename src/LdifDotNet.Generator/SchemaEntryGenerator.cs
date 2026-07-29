@@ -1,6 +1,8 @@
 #pragma warning disable MA0048 // Deliberate: the generator's options type is colocated with it
 
 using System.Globalization;
+using System.Reflection;
+using System.Text.RegularExpressions;
 using Bogus;
 using LdifDotNet.Schema;
 
@@ -16,7 +18,7 @@ namespace LdifDotNet.Generator;
 /// no supported generator fall back to free text, which a server may reject;
 /// supply an <see cref="SchemaGeneratorOptions.ExampleValues"/> pool for those.
 /// </summary>
-public sealed class SchemaEntryGenerator
+public sealed partial class SchemaEntryGenerator
 {
     /// <summary>
     /// Syntaxes we can generate valid values for. MAY attributes with other
@@ -25,17 +27,20 @@ public sealed class SchemaEntryGenerator
     /// </summary>
     private const string SyntaxPrefix = "1.3.6.1.4.1.1466.115.121.1.";
 
-    /// <summary>
-    /// Fixed reference instant for all time-derived values. Bogus date tokens
-    /// (e.g. {{date.past}}) are relative to the faker's DateTimeReference — left
-    /// unset they read the wall clock, which would break seeded determinism.
-    /// </summary>
-    private static readonly DateTime GenerationEpoch = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
     private readonly LdapSchema _schema;
     private readonly SchemaGeneratorOptions _options;
     private readonly Faker _faker;
+
+    /// <summary>
+    /// Validated snapshot of <see cref="SchemaGeneratorOptions.Formatters"/>,
+    /// expanded to cover every schema name of each keyed attribute. A snapshot
+    /// keeps the fail-at-construction contract airtight: mutating the options
+    /// dictionary after construction cannot smuggle in an unvalidated template.
+    /// </summary>
+    private readonly Dictionary<string, string> _formatters;
+
     private readonly Dictionary<string, HashSet<string>> _usedRdnValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _nextRdnSuffix = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Creates a generator for the given schema; null options use the defaults.</summary>
     public SchemaEntryGenerator(LdapSchema schema, SchemaGeneratorOptions? options = null)
@@ -44,71 +49,171 @@ public sealed class SchemaEntryGenerator
         _options = options ?? new SchemaGeneratorOptions();
         if (_options.OptionalAttributeFill is < 0 or > 1)
             throw new ArgumentOutOfRangeException(nameof(options), "OptionalAttributeFill must be between 0 and 1.");
-        _faker = CreateFaker(_options.Locale);
-        if (_options.Seed is { } seed)
-            _faker.Random = new Randomizer(seed);
-        ValidateFormatters(_options, nameof(options));
+        _faker = FakerFactory.Create(_options.Locale, _options.Seed);
+        _formatters = ValidateFormatters(_schema, _options);
     }
 
-    private static Faker CreateFaker(string locale) =>
-        new(locale) { DateTimeReference = GenerationEpoch };
-
     /// <summary>
-    /// Fails fast on unusable formatter templates. Probing uses a throwaway faker
-    /// so validation can never perturb the real generator's random stream.
+    /// Fails fast on unusable formatter templates and returns the validated,
+    /// alias-expanded snapshot. Probing uses a throwaway faker so validation can
+    /// never perturb the real generator's random stream.
     /// </summary>
-    private static void ValidateFormatters(SchemaGeneratorOptions options, string paramName)
+    private static Dictionary<string, string> ValidateFormatters(LdapSchema schema, SchemaGeneratorOptions options)
     {
+        var expanded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (options.Formatters.Count == 0)
-            return;
+            return expanded;
 
-        var probe = CreateFaker(options.Locale);
-        probe.Random = new Randomizer(0);
-        foreach (var (attribute, template) in options.Formatters)
+        var probe = FakerFactory.Create(options.Locale, seed: 0);
+        var originalCulture = PinInvariantCulture();
+        try
+        {
+            foreach (var (attribute, template) in options.Formatters)
+            {
+                ValidateTemplate(attribute, template);
+                // Register the template under the key and, when the key names a
+                // schema attribute, under all of that attribute's names — so a
+                // formatter keyed by an alias (e.g. "surname") still applies to
+                // the name the object class uses (e.g. "sn") instead of being
+                // silently ignored.
+                Register(attribute, template);
+                if (schema.FindAttributeType(attribute) is { } definition)
+                {
+                    foreach (string name in definition.Names)
+                        Register(name, template);
+                }
+            }
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+        return expanded;
+
+        void ValidateTemplate(string attribute, string template)
         {
             if (string.IsNullOrEmpty(template))
-                throw new ArgumentException($"Formatter for attribute '{attribute}' has a null or empty template.", paramName);
+                throw new ArgumentException($"Formatter for attribute '{attribute}' has a null or empty template.", nameof(options));
+
+            if (FindNonScalarToken(template) is { } bad)
+            {
+                throw new ArgumentException(
+                    $"Formatter template for attribute '{attribute}' uses token '{bad.Token}', which returns" +
+                    $" {bad.TypeName}, not a scalar value: \"{template}\". Use a scalar token (e.g. lorem.word, not lorem.words).",
+                    nameof(options));
+            }
+
             string probeOutput;
             try
             {
                 probeOutput = ParseTemplate(probe, template);
             }
-            catch (Exception ex) when (ex is ArgumentException or FormatException or InvalidCastException or OverflowException)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
+                // The tokenizer dispatches by reflection, so the exception surface
+                // is unbounded (KeyNotFoundException from a bad IBAN country code,
+                // wrapped TargetInvocationException, ...). The probe is a sandboxed
+                // throwaway faker; nothing is worth letting through unwrapped.
+                var cause = ex is TargetInvocationException { InnerException: { } inner } ? inner : ex;
                 throw new ArgumentException(
-                    $"Formatter template for attribute '{attribute}' is invalid: \"{template}\" ({ex.Message})", paramName, ex);
+                    $"Formatter template for attribute '{attribute}' is invalid: \"{template}\" ({cause.Message})",
+                    nameof(options), cause);
             }
-            // An array/collection-returning token stringifies as its .NET type name;
-            // that is never the value the template author meant.
-            if (probeOutput.Contains("System.", StringComparison.Ordinal)
-                && (probeOutput.Contains("[]", StringComparison.Ordinal) || probeOutput.Contains('`', StringComparison.Ordinal)))
+
+            if (string.IsNullOrWhiteSpace(probeOutput))
             {
                 throw new ArgumentException(
-                    $"Formatter template for attribute '{attribute}' uses a token that returns a non-scalar value" +
-                    $" (produced \"{probeOutput}\"): \"{template}\". Use a scalar token (e.g. {{{{lorem.word}}}}, not" +
-                    " {{lorem.words}}); for literal text, use ExampleValues instead.", paramName);
+                    $"Formatter template for attribute '{attribute}' produced an empty or whitespace-only value" +
+                    $" on a probe draw: \"{template}\".", nameof(options));
+            }
+        }
+
+        void Register(string name, string template)
+        {
+            if (expanded.TryGetValue(name, out string? existing))
+            {
+                if (!string.Equals(existing, template, StringComparison.Ordinal))
+                {
+                    throw new ArgumentException(
+                        $"Formatters contains conflicting templates for attribute '{name}' — aliases of one schema attribute share one formatter.",
+                        nameof(options));
+                }
+            }
+            else
+            {
+                expanded[name] = template;
             }
         }
     }
 
+    [GeneratedRegex(
+        @"\{\{\s*(?<category>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>[A-Za-z_][A-Za-z0-9_]*)",
+        RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+        matchTimeoutMilliseconds: 1000)]
+    private static partial Regex FormatterToken();
+
     /// <summary>
-    /// Interprets a formatter template under the invariant culture: the Bogus
-    /// tokenizer stringifies non-string token results with the current culture,
-    /// which would make seeded output vary by machine culture (under ar-SA,
-    /// {{date.past}} renders an Umm al-Qura calendar date).
+    /// Finds a template token whose Bogus dataset method cannot return a scalar,
+    /// deciding on the method's declared return type rather than sniffing rendered
+    /// output (which false-positives on literal text and misses non-System types).
+    /// Categories resolve like Bogus's own registration (dataset type name,
+    /// case-insensitive); unresolvable tokens are left to the probe parse, which
+    /// throws for genuinely unknown ones — so this check cannot false-reject.
+    /// </summary>
+    private static (string Token, string TypeName)? FindNonScalarToken(string template)
+    {
+        foreach (Match match in FormatterToken().Matches(template))
+        {
+            string category = match.Groups["category"].Value;
+            string method = match.Groups["method"].Value;
+            var dataset = Array.Find(
+                typeof(Faker).GetProperties(BindingFlags.Public | BindingFlags.Instance),
+                p => p.PropertyType.Name.Equals(category, StringComparison.OrdinalIgnoreCase));
+            if (dataset is null)
+                continue;
+            var overloads = dataset.PropertyType
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                .Where(m => m.Name.Equals(method, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (overloads.Count > 0 && !overloads.Exists(m => IsScalar(m.ReturnType)))
+                return ($"{category}.{method}", overloads[0].ReturnType.Name);
+        }
+        return null;
+    }
+
+    private static bool IsScalar(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return type == typeof(string) || type.IsPrimitive || type.IsEnum
+            || type == typeof(decimal) || type == typeof(DateTime) || type == typeof(DateTimeOffset)
+            || type == typeof(TimeSpan) || type == typeof(Guid);
+    }
+
+    /// <summary>
+    /// The single blessed <c>Faker.Parse</c> call site (RS0030 bans it elsewhere).
+    /// Callers must hold the invariant-culture scope: the Bogus tokenizer
+    /// stringifies non-string token results with the current culture, which would
+    /// make seeded output vary by machine culture (under ar-SA, {{date.past}}
+    /// renders an Umm al-Qura calendar date).
     /// </summary>
     private static string ParseTemplate(Faker faker, string template)
     {
+#pragma warning disable RS0030 // Sole blessed call site; culture is pinned by the caller's scope
+        return faker.Parse(template);
+#pragma warning restore RS0030
+    }
+
+    /// <summary>
+    /// Pins the invariant culture for a generation scope; the caller restores the
+    /// returned culture in a finally block. Restoring by assignment pins the
+    /// AsyncLocal-backed culture even where the thread was inheriting a default —
+    /// not fixable through the public API; accepted.
+    /// </summary>
+    private static CultureInfo PinInvariantCulture()
+    {
         var original = CultureInfo.CurrentCulture;
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-        try
-        {
-            return faker.Parse(template);
-        }
-        finally
-        {
-            CultureInfo.CurrentCulture = original;
-        }
+        return original;
     }
 
     /// <summary>Generates one entry of the given structural class under <paramref name="parentDn"/>.</summary>
@@ -117,6 +222,21 @@ public sealed class SchemaEntryGenerator
         ArgumentException.ThrowIfNullOrEmpty(objectClassName);
         ArgumentException.ThrowIfNullOrEmpty(parentDn);
 
+        // One culture pin per entry: every Bogus call in the body (not just
+        // formatter templates) then stringifies culture-invariantly.
+        var originalCulture = PinInvariantCulture();
+        try
+        {
+            return EntryCore(objectClassName, parentDn);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    private LdifContentRecord EntryCore(string objectClassName, string parentDn)
+    {
         var primary = ResolveClass(objectClassName);
         if (primary.Kind != LdapObjectClassKind.Structural)
             throw new ArgumentException($"Object class '{primary.Name}' is {primary.Kind}; the primary class of an entry must be structural.", nameof(objectClassName));
@@ -250,27 +370,44 @@ public sealed class SchemaEntryGenerator
 
     private string UniqueRdnValue(string rdnAttribute, string parentDn)
     {
-        string candidate = GenerateValue(rdnAttribute, parentDn, required: true)?.AsString() ?? "entry";
-        // RFC 4514 permits an empty RDN value, so the writer's DN validation would
-        // pass it — but a real server rejects it. Fail here, naming the producer.
-        if (candidate.Length == 0)
+        // GenerateValue never returns null for a required attribute.
+        string candidate = GenerateValue(rdnAttribute, parentDn, required: true)!.Value.AsString();
+        // RFC 4514 can represent empty and whitespace-only RDN values, so the
+        // writer's DN validation passes them — but a real server rejects them; a
+        // control character (e.g. a newline from {{lorem.paragraphs}}) would hide
+        // inside a base64-encoded dn line. Fail loud instead.
+        if (string.IsNullOrWhiteSpace(candidate) || candidate.Any(char.IsControl))
         {
             throw new InvalidOperationException(
-                $"Generated RDN value for '{rdnAttribute}' is empty; the formatter or example pool for that attribute must produce a non-empty value.");
+                $"Generated RDN value for '{rdnAttribute}' is empty, whitespace-only, or contains control characters; configure the attribute's formatter or example pool to produce a printable value.");
         }
-        var used = _usedRdnValues.TryGetValue($"{parentDn}\n{rdnAttribute}", out var set)
+
+        string key = $"{parentDn}\n{rdnAttribute}";
+        var used = _usedRdnValues.TryGetValue(key, out var set)
             ? set
-            : _usedRdnValues[$"{parentDn}\n{rdnAttribute}"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            : _usedRdnValues[key] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         string value = candidate;
-        for (int suffix = 2; !used.Add(value); suffix++)
-            value = $"{candidate}-{suffix}";
+        if (!used.Add(value))
+        {
+            // Resume from the last suffix minted for this candidate — restarting
+            // at 2 per entry is quadratic when a formatter yields a constant RDN.
+            string suffixKey = $"{key}\n{candidate}";
+            int suffix = _nextRdnSuffix.TryGetValue(suffixKey, out int next) ? next : 2;
+            do
+            {
+                value = $"{candidate}-{suffix}";
+                suffix++;
+            }
+            while (!used.Add(value));
+            _nextRdnSuffix[suffixKey] = suffix;
+        }
         return value;
     }
 
     private LdifValue? GenerateValue(string attributeName, string parentDn, bool required)
     {
-        if (_options.Formatters.TryGetValue(attributeName, out string? template))
+        if (_formatters.TryGetValue(attributeName, out string? template))
             return LdifValue.FromString(ParseTemplate(_faker, template));
 
         if (_options.ExampleValues.TryGetValue(attributeName, out var pool) && pool.Count > 0)
@@ -408,7 +545,7 @@ public sealed class SchemaEntryGenerator
     /// <summary>Deterministic timestamp — derived from the seeded RNG, never the clock.</summary>
     private string RandomTimestamp()
     {
-        var timestamp = GenerationEpoch
+        var timestamp = FakerFactory.GenerationEpoch
             .AddSeconds(_faker.Random.Long(0, 30L * 365 * 24 * 3600));
         return timestamp.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) + "Z";
     }
@@ -443,7 +580,10 @@ public sealed class SchemaGeneratorOptions
 
     /// <summary>
     /// Per-attribute example value pools (case-insensitive names). When present,
-    /// values are drawn from the pool instead of being synthesized.
+    /// values are drawn from the pool instead of being synthesized — unless a
+    /// <see cref="Formatters"/> template exists for the attribute, which takes
+    /// precedence. An empty or whitespace-only pool value drawn for the RDN
+    /// attribute fails generation with <see cref="InvalidOperationException"/>.
     /// </summary>
     public IDictionary<string, IReadOnlyList<string>> ExampleValues { get; } =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
@@ -453,15 +593,19 @@ public sealed class SchemaGeneratorOptions
     /// <c>"{{name.firstName}}.{{name.lastName}}@corp.example"</c> or
     /// <c>"EMP-{{randomizer.replacenumbers(#####)}}"</c>. Tokens use Bogus
     /// handlebars syntax (<c>{{dataset.method(args)}}</c>, case-insensitive);
-    /// text outside tokens is emitted verbatim. A matching formatter overrides
+    /// text outside tokens is emitted verbatim, except that literal
+    /// <c>{{</c>/<c>}}</c> cannot be expressed. A matching formatter overrides
     /// all built-in generation for that attribute, including
     /// <see cref="ExampleValues"/>, and its output is not checked against the
     /// attribute's declared syntax — the template author owns validity. Tokens
     /// must return scalar values and are stringified with the invariant culture;
     /// they draw from the generator's seeded randomness (time tokens from a fixed
     /// epoch), so seeded output remains deterministic per package version
-    /// regardless of machine culture. Malformed templates fail generator
-    /// construction.
+    /// regardless of machine culture. Malformed, non-scalar, and always-empty
+    /// templates fail generator construction. The generator snapshots this
+    /// dictionary at construction (later mutation has no effect) and applies a
+    /// key naming a schema attribute to all of that attribute's names, so a
+    /// formatter keyed <c>"surname"</c> also covers <c>sn</c>.
     /// </summary>
     public IDictionary<string, string> Formatters { get; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

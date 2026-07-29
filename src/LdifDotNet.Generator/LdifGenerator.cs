@@ -19,9 +19,7 @@ public sealed class LdifGenerator
     public LdifGenerator(LdifGeneratorOptions? options = null)
     {
         _options = options ?? new LdifGeneratorOptions();
-        _faker = new Faker(_options.Locale);
-        if (_options.Seed is { } seed)
-            _faker.Random = new Randomizer(seed);
+        _faker = FakerFactory.Create(_options.Locale, _options.Seed);
 
         // Parse the base DN once, honoring RFC 4514 escaping and multi-valued RDNs.
         _baseRdns = Dn.Parse(_options.BaseDn);

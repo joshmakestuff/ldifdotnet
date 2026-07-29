@@ -372,22 +372,53 @@ public class SchemaEntryGeneratorTests
         Assert.Equal(RunUnder("en-US"), RunUnder("ar-SA"));
     }
 
-    [Fact]
-    public void Non_scalar_formatter_token_fails_construction()
+    [Theory]
+    [InlineData("{{lorem.words}}", "String[]")]          // array
+    [InlineData("{{finance.currency}}", "Currency")]     // object, non-System namespace (escaped the old sniff)
+    [InlineData("{{system.exception}}", "Exception")]    // multi-line ToString (escaped the old sniff)
+    public void Non_scalar_tokens_rejected_by_return_type(string template, string returnType)
     {
         var options = new SchemaGeneratorOptions();
-        options.Formatters["cn"] = "{{lorem.words}}";   // string[] — stringifies as "System.String[]"
+        options.Formatters["cn"] = template;
 
         var ex = Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
         Assert.Contains("cn", ex.Message);
-        Assert.Contains("non-scalar", ex.Message);
+        Assert.Contains(returnType, ex.Message);
     }
 
     [Fact]
-    public void Empty_formatter_rdn_value_fails_loud()
+    public void Literal_text_mentioning_type_names_is_allowed()
+    {
+        // The replaced output-sniffing guard false-positived on this template.
+        var options = new SchemaGeneratorOptions { Seed = 6, OptionalAttributeFill = 1.0 };
+        options.Formatters["description"] = "migrated from System.String[] `docs` {{lorem.word}}";
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var entry = generator.Entry("inetOrgPerson", ParentDn);
+
+        Assert.StartsWith("migrated from System.String[] `docs` ", entry["description"]!.Values[0].AsString());
+    }
+
+    [Fact]
+    public void Always_empty_template_fails_construction()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 1 };
+        options.Formatters["cn"] = "{{lorem.letter(0)}}";   // scalar token, always renders ""
+
+        var ex = Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+        Assert.Contains("cn", ex.Message);
+        Assert.Contains("empty", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("")]           // empty: RFC 4514 representable, servers reject
+    [InlineData(" ")]          // whitespace-only: escapes to "cn=\ ", servers reject
+    [InlineData("a\nb")]       // control char: would hide inside a base64-encoded dn line
+    [InlineData("bad\0name")]  // NUL: escapable as \00 but still server-rejected
+    public void Empty_whitespace_or_control_rdn_value_fails_loud(string poolValue)
     {
         var options = new SchemaGeneratorOptions { Seed = 1, RdnAttribute = "cn" };
-        options.Formatters["cn"] = "{{lorem.letter(0)}}";   // validates fine, always produces ""
+        options.ExampleValues["cn"] = [poolValue];
         var generator = new SchemaEntryGenerator(CoreSchemas(), options);
 
         var ex = Assert.Throws<InvalidOperationException>(() => generator.Entry("person", ParentDn));
@@ -395,26 +426,90 @@ public class SchemaEntryGeneratorTests
     }
 
     [Fact]
-    public void Empty_pool_rdn_value_fails_loud()
+    public void Formatter_mutation_after_construction_has_no_effect()
     {
-        var options = new SchemaGeneratorOptions { Seed = 1, RdnAttribute = "cn" };
-        options.ExampleValues["cn"] = [""];
-        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+        SchemaGeneratorOptions Options()
+        {
+            var options = new SchemaGeneratorOptions { Seed = 53, OptionalAttributeFill = 0.5 };
+            options.Formatters["cn"] = "{{name.fullName}}";
+            return options;
+        }
 
-        var ex = Assert.Throws<InvalidOperationException>(() => generator.Entry("person", ParentDn));
-        Assert.Contains("cn", ex.Message);
+        var mutated = Options();
+        var generator = new SchemaEntryGenerator(CoreSchemas(), mutated);
+        mutated.Formatters["cn"] = "{{no.suchThing}}";      // invalid — must not be read
+        mutated.Formatters["sn"] = "{{lorem.words}}";       // non-scalar — must not be read
+        string fromMutated = LdifWriter.WriteToString(generator.Entries("inetOrgPerson", 10, ParentDn));
+
+        string fromClean = LdifWriter.WriteToString(
+            new SchemaEntryGenerator(CoreSchemas(), Options()).Entries("inetOrgPerson", 10, ParentDn));
+
+        Assert.Equal(fromClean, fromMutated);
     }
 
     [Fact]
-    public void Nul_in_rdn_value_is_hex_escaped()
+    public void Formatter_alias_key_applies_to_canonical_attribute()
     {
-        var options = new SchemaGeneratorOptions { Seed = 1, RdnAttribute = "cn" };
-        options.ExampleValues["cn"] = ["bad\0name"];
+        // core.schema defines 2.5.4.4 NAME ( 'sn' 'surname' ); person requires "sn".
+        var options = new SchemaGeneratorOptions { Seed = 9, OptionalAttributeFill = 0 };
+        options.Formatters["surname"] = "ALIASED {{name.lastName}}";
         var generator = new SchemaEntryGenerator(CoreSchemas(), options);
 
         var entry = generator.Entry("person", ParentDn);
 
-        Assert.StartsWith("cn=bad\\00name,", entry.Dn);
-        Assert.DoesNotContain('\0', entry.Dn);
+        Assert.StartsWith("ALIASED ", entry["sn"]!.Values[0].AsString());
     }
+
+    [Fact]
+    public void Conflicting_alias_formatters_fail_construction()
+    {
+        var options = new SchemaGeneratorOptions();
+        options.Formatters["sn"] = "{{name.lastName}}";
+        options.Formatters["surname"] = "{{name.firstName}}";
+
+        var ex = Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+        Assert.Contains("conflicting", ex.Message);
+    }
+
+    [Fact]
+    public void Unusual_probe_exception_is_wrapped_naming_attribute()
+    {
+        // Bogus throws KeyNotFoundException for an unknown IBAN country code — a
+        // reflection-dispatched surface the old four-type catch filter let escape.
+        var options = new SchemaGeneratorOptions();
+        options.Formatters["mail"] = "{{finance.iban(true,ZZ)}}";
+
+        var ex = Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+        Assert.Contains("mail", ex.Message);
+        Assert.Contains("{{finance.iban(true,ZZ)}}", ex.Message);
+    }
+
+    [Fact]
+    public void Literal_close_brace_fails_construction_naming_attribute()
+    {
+        // The Bogus tokenizer owns {{ and }}; a literal }} cannot be expressed and
+        // must fail construction with the attribute named, not leak a raw error
+        // quoting generated text.
+        var options = new SchemaGeneratorOptions();
+        options.Formatters["description"] = "closing }} brace {{lorem.word}}";
+
+        var ex = Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+        Assert.Contains("description", ex.Message);
+    }
+
+    [Fact]
+    public void Constant_rdn_formatter_suffix_sequence_is_preserved()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 2, RdnAttribute = "cn", OptionalAttributeFill = 0 };
+        options.Formatters["cn"] = "Fixed Name";
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var entries = generator.Entries("person", 500, ParentDn);
+
+        Assert.Equal($"cn=Fixed Name,{ParentDn}", entries[0].Dn);
+        Assert.Equal($"cn=Fixed Name-2,{ParentDn}", entries[1].Dn);
+        Assert.Equal($"cn=Fixed Name-500,{ParentDn}", entries[499].Dn);
+        Assert.Equal(500, entries.Select(e => e.Dn).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
 }
