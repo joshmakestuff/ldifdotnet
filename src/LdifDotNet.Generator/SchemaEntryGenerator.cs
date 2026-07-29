@@ -79,6 +79,10 @@ public sealed partial class SchemaEntryGenerator
                 Register(attribute, template);
                 if (schema.FindAttributeType(attribute) is { } definition)
                 {
+                    // The OID too: an object class may list the attribute
+                    // numerically (MUST 1.2.3.4), and that string becomes the
+                    // generated attribute's name.
+                    Register(definition.Oid, template);
                     foreach (string name in definition.Names)
                         Register(name, template);
                 }
@@ -181,12 +185,23 @@ public sealed partial class SchemaEntryGenerator
         return null;
     }
 
+    /// <summary>
+    /// Types whose default rendering is a stable single-line value under the
+    /// invariant culture. Bogus 35.6.5's dataset methods also return DateOnly,
+    /// TimeOnly, IPAddress, IPEndPoint and Version — all render cleanly
+    /// ("05/04/1999", "133.207.206.30", "1.9.5.1"); arrays, Currency, Exception
+    /// and other objects stringify as type names or multi-line text and stay
+    /// rejected.
+    /// </summary>
     private static bool IsScalar(Type type)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
         return type == typeof(string) || type.IsPrimitive || type.IsEnum
             || type == typeof(decimal) || type == typeof(DateTime) || type == typeof(DateTimeOffset)
-            || type == typeof(TimeSpan) || type == typeof(Guid);
+            || type == typeof(TimeSpan) || type == typeof(Guid)
+            || type == typeof(DateOnly) || type == typeof(TimeOnly)
+            || type == typeof(System.Net.IPAddress) || type == typeof(System.Net.IPEndPoint)
+            || type == typeof(Version);
     }
 
     /// <summary>
@@ -368,41 +383,78 @@ public sealed partial class SchemaEntryGenerator
             ?? "cn";
     }
 
+    /// <summary>How many fresh draws to attempt on an RDN collision before falling back.</summary>
+    private const int RdnRegenerationAttempts = 20;
+
+    /// <summary>Syntaxes for which a "-n" uniqueness suffix stays lexically valid.</summary>
+    private static readonly HashSet<string> SuffixSafeSyntaxes = new(StringComparer.Ordinal)
+    {
+        SyntaxPrefix + "15", // Directory String
+        SyntaxPrefix + "26", // IA5 String
+        SyntaxPrefix + "40", // Octet String
+        SyntaxPrefix + "41", // Postal Address
+        SyntaxPrefix + "44", // Printable String
+        SyntaxPrefix + "50", // Telephone Number
+    };
+
     private string UniqueRdnValue(string rdnAttribute, string parentDn)
     {
-        // GenerateValue never returns null for a required attribute.
-        string candidate = GenerateValue(rdnAttribute, parentDn, required: true)!.Value.AsString();
-        // RFC 4514 can represent empty and whitespace-only RDN values, so the
-        // writer's DN validation passes them — but a real server rejects them; a
-        // control character (e.g. a newline from {{lorem.paragraphs}}) would hide
-        // inside a base64-encoded dn line. Fail loud instead.
-        if (string.IsNullOrWhiteSpace(candidate) || candidate.Any(char.IsControl))
-        {
-            throw new InvalidOperationException(
-                $"Generated RDN value for '{rdnAttribute}' is empty, whitespace-only, or contains control characters; configure the attribute's formatter or example pool to produce a printable value.");
-        }
-
         string key = $"{parentDn}\n{rdnAttribute}";
         var used = _usedRdnValues.TryGetValue(key, out var set)
             ? set
             : _usedRdnValues[key] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        string value = candidate;
-        if (!used.Add(value))
+        string candidate = NextCandidate();
+        if (used.Add(candidate))
+            return candidate;
+
+        // A fresh draw usually resolves a collision for random sources and keeps
+        // the value inside its declared syntax, where a "-n" suffix would corrupt
+        // e.g. an INTEGER uidNumber into a server-rejected "1000-2".
+        for (int attempt = 0; attempt < RdnRegenerationAttempts; attempt++)
         {
-            // Resume from the last suffix minted for this candidate — restarting
-            // at 2 per entry is quadratic when a formatter yields a constant RDN.
-            string suffixKey = $"{key}\n{candidate}";
-            int suffix = _nextRdnSuffix.TryGetValue(suffixKey, out int next) ? next : 2;
-            do
-            {
-                value = $"{candidate}-{suffix}";
-                suffix++;
-            }
-            while (!used.Add(value));
-            _nextRdnSuffix[suffixKey] = suffix;
+            string retry = NextCandidate();
+            if (used.Add(retry))
+                return retry;
         }
+
+        var (_, syntax) = ResolveSyntax(rdnAttribute);
+        if (syntax is not null && !SuffixSafeSyntaxes.Contains(syntax))
+        {
+            throw new InvalidOperationException(
+                $"Cannot generate a unique RDN value for '{rdnAttribute}': {RdnRegenerationAttempts} draws collided and a" +
+                " uniqueness suffix would violate the attribute's declared syntax. Widen the formatter or example pool value space.");
+        }
+
+        // Resume from the last suffix minted for this candidate — restarting at 2
+        // per entry is quadratic when a formatter yields a constant RDN value.
+        string suffixKey = $"{key}\n{candidate}";
+        int suffix = _nextRdnSuffix.TryGetValue(suffixKey, out int next) ? next : 2;
+        string value;
+        do
+        {
+            value = $"{candidate}-{suffix}";
+            suffix++;
+        }
+        while (!used.Add(value));
+        _nextRdnSuffix[suffixKey] = suffix;
         return value;
+
+        string NextCandidate()
+        {
+            // GenerateValue never returns null for a required attribute.
+            string generated = GenerateValue(rdnAttribute, parentDn, required: true)!.Value.AsString();
+            // RFC 4514 can represent empty and whitespace-only RDN values, so the
+            // writer's DN validation passes them — but a real server rejects them;
+            // a control character (e.g. a newline from {{lorem.paragraphs}}) would
+            // hide inside a base64-encoded dn line. Fail loud instead.
+            if (string.IsNullOrWhiteSpace(generated) || generated.Any(char.IsControl))
+            {
+                throw new InvalidOperationException(
+                    $"Generated RDN value for '{rdnAttribute}' is empty, whitespace-only, or contains control characters; configure the attribute's formatter or example pool to produce a printable value.");
+            }
+            return generated;
+        }
     }
 
     private LdifValue? GenerateValue(string attributeName, string parentDn, bool required)

@@ -47,4 +47,7 @@ version regardless of machine culture. Malformed, non-scalar, and always-empty
 templates fail construction; the dictionary is snapshotted at construction, and
 a key naming a schema attribute covers all of its names (`surname` also formats
 `sn`). Empty, whitespace-only, or control-character RDN values fail generation
-loudly rather than emitting DNs a real server rejects.
+loudly rather than emitting DNs a real server rejects. RDN collisions are
+resolved by drawing fresh values; only text-safe syntaxes fall back to a `-n`
+suffix, and structured syntaxes (e.g. INTEGER) fail rather than emit a
+corrupted value.

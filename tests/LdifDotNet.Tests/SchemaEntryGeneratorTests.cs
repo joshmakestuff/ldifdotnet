@@ -498,6 +498,77 @@ public class SchemaEntryGeneratorTests
     }
 
     [Fact]
+    public void Oid_referenced_attribute_uses_name_keyed_formatter()
+    {
+        // A legal object class may list an attribute by OID; the generated
+        // attribute then carries the OID as its name, and a formatter keyed by
+        // the attribute's name must still apply.
+        var schema = LdapSchema.Parse(
+            "attributetype ( 1.2.3.4.1 NAME 'cn' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )\n" +
+            "attributetype ( 1.2.3.4.2 NAME 'empId' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )\n" +
+            "objectclass ( 1.2.3.4.9 NAME 'oidThing' STRUCTURAL MUST ( cn $ 1.2.3.4.2 ) )\n");
+        var options = new SchemaGeneratorOptions { Seed = 4, RdnAttribute = "cn" };
+        options.Formatters["empId"] = "EMP-{{randomizer.replacenumbers(####)}}";
+        var generator = new SchemaEntryGenerator(schema, options);
+
+        var entry = generator.Entry("oidThing", ParentDn);
+
+        Assert.Matches("^EMP-[0-9]{4}$", entry["1.2.3.4.2"]!.Values[0].AsString());
+    }
+
+    [Theory]
+    [InlineData("{{date.pastdateonly}}", "^[0-9]{2}/[0-9]{2}/[0-9]{4}$")]     // DateOnly, invariant culture
+    [InlineData("{{internet.ipaddress}}", "^[0-9.]+$")]                        // IPAddress
+    [InlineData("{{system.version}}", "^[0-9.]+$")]                            // Version
+    public void Value_type_tokens_are_accepted(string template, string pattern)
+    {
+        var options = new SchemaGeneratorOptions { Seed = 12, OptionalAttributeFill = 1.0 };
+        options.Formatters["description"] = template;
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var entry = generator.Entry("inetOrgPerson", ParentDn);
+
+        Assert.Matches(pattern, entry["description"]!.Values[0].AsString());
+    }
+
+    [Fact]
+    public void Numeric_rdn_collision_fails_instead_of_corrupting()
+    {
+        // A "-2" suffix on a declared-INTEGER RDN would be a server-rejected
+        // value; with a constant formatter no regeneration can help, so
+        // generation fails. (Only a declared syntax can trigger this — attributes
+        // slapd hardcodes outside schema files, like uidNumber in the stock
+        // fixtures, have unknowable syntax and keep the suffix fallback.)
+        var schema = LdapSchema.Parse(
+            "attributetype ( 1.2.3.5.1 NAME 'cn' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )\n" +
+            "attributetype ( 1.2.3.5.2 NAME 'memberCount' EQUALITY integerMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 )\n" +
+            "objectclass ( 1.2.3.5.9 NAME 'intThing' STRUCTURAL MUST ( cn $ memberCount ) )\n");
+        var options = new SchemaGeneratorOptions { Seed = 3, RdnAttribute = "memberCount", OptionalAttributeFill = 0 };
+        options.Formatters["memberCount"] = "1000";
+        var generator = new SchemaEntryGenerator(schema, options);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => generator.Entries("intThing", 2, ParentDn));
+        Assert.Contains("memberCount", ex.Message);
+    }
+
+    [Fact]
+    public void Rdn_collision_regenerates_syntax_valid_values()
+    {
+        // A random numeric RDN formatter with a small value space must resolve
+        // collisions by drawing again — never by appending a "-n" suffix.
+        var options = new SchemaGeneratorOptions { Seed = 14, RdnAttribute = "uidNumber", OptionalAttributeFill = 0 };
+        options.AuxiliaryClasses.Add("posixAccount");
+        options.Formatters["uidNumber"] = "{{randomizer.number(1,5)}}";
+        var generator = new SchemaEntryGenerator(CoreSchemas("schemas/contrib/rfc2307bis.schema"), options);
+
+        var entries = generator.Entries("account", 4, ParentDn);
+
+        var values = entries.Select(e => e.Dn.Split(',')[0]["uidNumber=".Length..]).ToList();
+        Assert.All(values, v => Assert.Matches("^[0-9]+$", v));
+        Assert.Equal(4, values.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
     public void Constant_rdn_formatter_suffix_sequence_is_preserved()
     {
         var options = new SchemaGeneratorOptions { Seed = 2, RdnAttribute = "cn", OptionalAttributeFill = 0 };
