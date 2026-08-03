@@ -202,13 +202,13 @@ public class SubschemaParseTests
     [Fact]
     public void Subschema_treats_bare_word_after_unknown_keyword_as_next_keyword()
     {
-        // Pins a deliberate tradeoff: an unknown keyword's bare-word "value" is
-        // indistinguishable from the next keyword, so it is treated as one and
-        // skipped in turn when unknown. The alternative — always consuming one
-        // token — would corrupt the more realistic flag-before-keyword shape
-        // (VENDORFLAG NAME 'x' losing its NAME). The residual ambiguity, a
-        // vendor value that literally equals a standard keyword, mis-parses
-        // under either heuristic and has not been observed in real servers.
+        // An unknown keyword's bare-word "value" is indistinguishable from the
+        // next keyword, so it is treated as one and skipped in turn when
+        // unknown. This input parses identically under the alternative
+        // (consume-one-token) heuristic; what distinguishes the two is the
+        // flag-before-keyword shape, pinned by
+        // Subschema_skips_unknown_flag_keyword_before_a_real_keyword — under
+        // consume-one, VENDORFLAG would eat NAME and fail the definition.
         var schema = LdapSchema.ParseSubschema(
             ["( 1.2.3 VENDORKEY vendorvalue NAME 'x' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )"],
             []);
@@ -217,6 +217,27 @@ public class SubschemaParseTests
         var type = Assert.Single(schema.AttributeTypes);
         Assert.Equal("x", type.Name);
         Assert.Equal("1.3.6.1.4.1.1466.115.121.1.15", type.Syntax);
+    }
+
+    [Fact]
+    public void Subschema_bare_value_colliding_with_a_keyword_is_the_known_blind_spot()
+    {
+        // The chosen heuristic's blind spot, documented rather than hidden: a
+        // vendor keyword whose bare value literally equals a standard keyword
+        // makes that keyword parse as real — here NAME captures the word
+        // SYNTAX, and the OID that follows skips as an unknown flag. The
+        // consume-one-token alternative handles this shape but corrupts the
+        // flag-before-keyword shape instead; each heuristic has exactly one of
+        // the two blind spots, this one has not been observed in real server
+        // output, and the flag shape is the realistic vendor pattern.
+        var schema = LdapSchema.ParseSubschema(
+            ["( 1.2.3 VENDORKEY NAME SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )"],
+            []);
+
+        Assert.Empty(schema.UnparsedDefinitions);
+        var type = Assert.Single(schema.AttributeTypes);
+        Assert.Equal(["SYNTAX"], type.Names);
+        Assert.Null(type.Syntax);
     }
 
     [Fact]
