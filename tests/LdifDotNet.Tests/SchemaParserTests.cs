@@ -12,6 +12,23 @@ public class SchemaParserTests
         return data;
     }
 
+    [Theory]
+    [InlineData("01.2.3.4.5")] // leading-zero arc — illegal per RFC 4512 numericoid
+    [InlineData("1.02.3")]     // interior leading zero
+    [InlineData("1")]          // single arc — RFC 4512 requires at least two
+    public void Oid_leniency_matches_slapd_not_rfc4512(string oid)
+    {
+        // Deliberate: IsNumericOid implements RFC 2849's looser ldap-oid, and
+        // slapd is exactly as loose — slaptest (OpenLDAP 2.6.10, 2026-08-03)
+        // accepted attributetype directives with every OID shape below.
+        // Tightening to RFC 4512's numericoid would reject schema files slapd
+        // loads, breaking the tolerant-reader / slapd-compatibility invariant.
+        var schema = LdapSchema.Parse(
+            $"attributetype ( {oid} NAME 'probeAttr' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )\n");
+
+        Assert.Equal(oid, schema.AttributeTypes[0].Oid);
+    }
+
     [Fact]
     public void Ldapsyntax_directive_parses_in_file_mode()
     {
