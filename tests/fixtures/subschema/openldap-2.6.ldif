@@ -1,3 +1,4 @@
+# Captured from: @(#) $OpenLDAP: slapd 2.6.10+dfsg-1 (May 29 2025 23:41:48) $
 version: 1
 
 dn: cn=Subschema

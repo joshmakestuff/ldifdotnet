@@ -131,6 +131,8 @@ public class DifferentialTests
                     "\n", schema.UnparsedDefinitions.Select(u => $"{u.Error}: {u.Definition}")));
             Assert.True(schema.AttributeTypes.Count > 200,
                 $"expected the full published attribute set, got {schema.AttributeTypes.Count}");
+            Assert.True(schema.ObjectClasses.Count > 50,
+                $"expected the full published class set, got {schema.ObjectClasses.Count}");
 
             // The shape schema files never contain: cn published with SUP and no SYNTAX.
             var cn = schema.FindAttributeType("cn");

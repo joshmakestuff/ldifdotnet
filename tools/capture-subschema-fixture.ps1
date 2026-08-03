@@ -39,9 +39,17 @@ for i in $(seq 1 50); do
     ldapsearch -H ldapi:/// -x -s base -b "" "(objectClass=*)" namingContexts >/dev/null 2>&1 && break
     sleep 0.2
 done
-/usr/sbin/slapd -V 2>&1 | head -1
-ldapsearch -LL -H ldapi:/// -x -s base -b cn=Subschema "(objectClass=subschema)" \
-    attributeTypes objectClasses ldapSyntaxes > /out/openldap-2.6.ldif
+# The fixture's first line is the capture's runtime witness: the exact slapd
+# that answered, asserted by the fixture test so the "2.6" in the filename can
+# never silently drift. Fail closed here if the image stops shipping 2.6.
+VERSION=$(/usr/sbin/slapd -V 2>&1 | head -1)
+echo "$VERSION"
+case "$VERSION" in *"slapd 2.6."*) ;; *) echo "expected slapd 2.6, got: $VERSION" >&2; exit 1;; esac
+{
+    echo "# Captured from: $VERSION"
+    ldapsearch -LL -H ldapi:/// -x -s base -b cn=Subschema "(objectClass=subschema)" \
+        attributeTypes objectClasses ldapSyntaxes
+} > /out/openldap-2.6.ldif
 '@
 
 docker run --rm -v "${dest}:/out" $Image bash -c $script
