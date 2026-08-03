@@ -23,16 +23,42 @@ internal sealed class SchemaParser
             switch (keyword)
             {
                 case "attributetype" or "attributetypes":
-                    attributeTypes.Add(ParseAttributeType(new Cursor(body, lineNumber)));
+                    attributeTypes.Add(ParseAttributeType(new Cursor(body, lineNumber), lenient: false));
                     break;
                 case "objectclass" or "objectclasses":
-                    objectClasses.Add(ParseObjectClass(new Cursor(body, lineNumber)));
+                    objectClasses.Add(ParseObjectClass(new Cursor(body, lineNumber), lenient: false));
                     break;
                 case "objectidentifier":
                     ParseOidMacro(body, lineNumber);
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Parses one bare parenthesized attribute type definition, as a subschema
+    /// subentry publishes them in attributeTypes values. Lenient mode skips
+    /// unknown keywords instead of failing the definition.
+    /// </summary>
+    public LdapAttributeType ParseAttributeTypeDefinition(string definition, bool lenient)
+    {
+        var cursor = new Cursor(definition, lineNumber: 1, locateErrors: false);
+        var result = ParseAttributeType(cursor, lenient);
+        cursor.ExpectEnd();
+        return result;
+    }
+
+    /// <summary>
+    /// Parses one bare parenthesized object class definition, as a subschema
+    /// subentry publishes them in objectClasses values. Lenient mode skips
+    /// unknown keywords instead of failing the definition.
+    /// </summary>
+    public LdapObjectClass ParseObjectClassDefinition(string definition, bool lenient)
+    {
+        var cursor = new Cursor(definition, lineNumber: 1, locateErrors: false);
+        var result = ParseObjectClass(cursor, lenient);
+        cursor.ExpectEnd();
+        return result;
     }
 
     /// <summary>
@@ -121,7 +147,7 @@ internal sealed class SchemaParser
         return oid;
     }
 
-    private LdapAttributeType ParseAttributeType(Cursor cursor)
+    private LdapAttributeType ParseAttributeType(Cursor cursor, bool lenient)
     {
         cursor.Expect(TokenKind.LParen);
         var result = new LdapAttributeType { Oid = ResolveOid(cursor) };
@@ -162,6 +188,8 @@ internal sealed class SchemaParser
                 default:
                     if (token.Value.StartsWith("X-", StringComparison.OrdinalIgnoreCase))
                         extensions[token.Value] = cursor.ReadValueList();
+                    else if (lenient)
+                        cursor.SkipUnknownValue();
                     else
                         throw cursor.Error($"unexpected keyword '{token.Value}' in attributetype");
                     break;
@@ -172,7 +200,7 @@ internal sealed class SchemaParser
         return result;
     }
 
-    private LdapObjectClass ParseObjectClass(Cursor cursor)
+    private LdapObjectClass ParseObjectClass(Cursor cursor, bool lenient)
     {
         cursor.Expect(TokenKind.LParen);
         var result = new LdapObjectClass { Oid = ResolveOid(cursor) };
@@ -200,6 +228,8 @@ internal sealed class SchemaParser
                 default:
                     if (token.Value.StartsWith("X-", StringComparison.OrdinalIgnoreCase))
                         extensions[token.Value] = cursor.ReadValueList();
+                    else if (lenient)
+                        cursor.SkipUnknownValue();
                     else
                         throw cursor.Error($"unexpected keyword '{token.Value}' in objectclass");
                     break;
@@ -222,7 +252,7 @@ internal sealed class SchemaParser
 
     private readonly record struct Token(TokenKind Kind, string Value);
 
-    private sealed class Cursor(string text, int lineNumber)
+    private sealed class Cursor(string text, int lineNumber, bool locateErrors = true)
     {
         private int _position;
         private Token? _peeked;
@@ -280,8 +310,47 @@ internal sealed class SchemaParser
                 throw Error($"expected {kind}, got '{token.Value}'");
         }
 
+        /// <summary>Requires that nothing follows the definition's closing paren.</summary>
+        public void ExpectEnd()
+        {
+            var token = Next();
+            if (token.Kind != TokenKind.End)
+                throw Error($"unexpected '{token.Value}' after the definition");
+        }
+
+        /// <summary>
+        /// Skips the value of an unknown keyword in lenient mode. A quoted string
+        /// or a balanced parenthesized group is consumed; a bare word is left in
+        /// place, because it is more likely the next keyword than a value (unknown
+        /// flag keywords take no value at all).
+        /// </summary>
+        public void SkipUnknownValue()
+        {
+            var next = Peek();
+            if (next.Kind == TokenKind.Quoted)
+            {
+                Next();
+                return;
+            }
+            if (next.Kind != TokenKind.LParen)
+                return;
+
+            Next();
+            int depth = 1;
+            while (depth > 0)
+            {
+                depth += Next().Kind switch
+                {
+                    TokenKind.LParen => 1,
+                    TokenKind.RParen => -1,
+                    TokenKind.End => throw Error("unterminated parenthesized group"),
+                    _ => 0,
+                };
+            }
+        }
+
         public LdapSchemaParseException Error(string message) =>
-            new($"line {lineNumber}: {message}", lineNumber);
+            new(locateErrors ? $"line {lineNumber}: {message}" : message, lineNumber);
 
         /// <summary>
         /// Decodes RFC 4512 qdstring escapes: "\27" is an apostrophe and
