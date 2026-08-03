@@ -200,6 +200,26 @@ public class SubschemaParseTests
     }
 
     [Fact]
+    public void Subschema_treats_bare_word_after_unknown_keyword_as_next_keyword()
+    {
+        // Pins a deliberate tradeoff: an unknown keyword's bare-word "value" is
+        // indistinguishable from the next keyword, so it is treated as one and
+        // skipped in turn when unknown. The alternative — always consuming one
+        // token — would corrupt the more realistic flag-before-keyword shape
+        // (VENDORFLAG NAME 'x' losing its NAME). The residual ambiguity, a
+        // vendor value that literally equals a standard keyword, mis-parses
+        // under either heuristic and has not been observed in real servers.
+        var schema = LdapSchema.ParseSubschema(
+            ["( 1.2.3 VENDORKEY vendorvalue NAME 'x' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )"],
+            []);
+
+        Assert.Empty(schema.UnparsedDefinitions);
+        var type = Assert.Single(schema.AttributeTypes);
+        Assert.Equal("x", type.Name);
+        Assert.Equal("1.3.6.1.4.1.1466.115.121.1.15", type.Syntax);
+    }
+
+    [Fact]
     public void Subschema_still_captures_x_extensions()
     {
         var schema = LdapSchema.ParseSubschema(
@@ -247,8 +267,16 @@ public class SubschemaParseTests
         // tests/fixtures/subschema/README.md), read back through our own LDIF
         // reader — folded lines, base64, and all — then through the lenient
         // subschema parser. Every published definition must parse.
-        var entry = Assert.IsType<LdifContentRecord>(
-            Assert.Single(LdifReader.ReadFile(Fixtures.PathOf("subschema", "openldap-2.6.ldif"))));
+        string fixturePath = Fixtures.PathOf("subschema", "openldap-2.6.ldif");
+
+        // The "2.6" in the filename is a claim; the capture script's first-line
+        // witness is what keeps it honest (a recapture from a drifted image
+        // fails here instead of silently relabeling another version as 2.6).
+        string witness = File.ReadLines(fixturePath).First();
+        Assert.StartsWith("# Captured from:", witness, StringComparison.Ordinal);
+        Assert.Contains("slapd 2.6.", witness, StringComparison.Ordinal);
+
+        var entry = Assert.IsType<LdifContentRecord>(Assert.Single(LdifReader.ReadFile(fixturePath)));
         Assert.Equal("cn=Subschema", entry.Dn);
 
         var schema = LdapSchema.ParseSubschema(
