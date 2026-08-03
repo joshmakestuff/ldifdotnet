@@ -112,19 +112,23 @@ public class DifferentialTests
         try
         {
             var search = Run(Tool("ldapsearch"), "-LL", "-H", url, "-x", "-s", "base",
-                "-b", "cn=Subschema", "(objectClass=subschema)", "attributeTypes", "objectClasses");
+                "-b", "cn=Subschema", "(objectClass=subschema)",
+                "attributeTypes", "objectClasses", "ldapSyntaxes");
             Assert.True(search.ExitCode == 0, $"ldapsearch failed:\n{search.StdErr}");
 
             // Dogfood: ldapsearch answers in LDIF, so our own reader unfolds it.
             var entry = Assert.IsType<LdifContentRecord>(Assert.Single(LdifReader.Parse(search.StdOut)));
             var attributeTypes = entry["attributeTypes"];
             var objectClasses = entry["objectClasses"];
+            var ldapSyntaxes = entry["ldapSyntaxes"];
             Assert.NotNull(attributeTypes);
             Assert.NotNull(objectClasses);
+            Assert.NotNull(ldapSyntaxes);
 
             var schema = LdapSchema.ParseSubschema(
                 attributeTypes.Values.Select(v => v.AsString()),
-                objectClasses.Values.Select(v => v.AsString()));
+                objectClasses.Values.Select(v => v.AsString()),
+                ldapSyntaxes.Values.Select(v => v.AsString()));
 
             Assert.True(schema.UnparsedDefinitions.Count == 0,
                 "definitions a live server published failed to parse:\n" + string.Join(
@@ -133,17 +137,49 @@ public class DifferentialTests
                 $"expected the full published attribute set, got {schema.AttributeTypes.Count}");
             Assert.True(schema.ObjectClasses.Count > 50,
                 $"expected the full published class set, got {schema.ObjectClasses.Count}");
+            Assert.True(schema.Syntaxes.Count > 25,
+                $"expected the full published syntax set, got {schema.Syntaxes.Count}");
 
             // The shape schema files never contain: cn published with SUP and no SYNTAX.
             var cn = schema.FindAttributeType("cn");
             Assert.NotNull(cn);
             Assert.Equal("name", cn.SuperiorName);
             Assert.Null(cn.Syntax);
+            Assert.Equal("1.3.6.1.4.1.1466.115.121.1.15", schema.ResolveSyntaxOid(cn));
+
+            // How a live server declares octet-carrying syntaxes.
+            var audio = schema.FindSyntax("1.3.6.1.4.1.1466.115.121.1.4");
+            Assert.NotNull(audio);
+            Assert.True(audio.NotHumanReadable);
         }
         finally
         {
             StopSlapd(Path.Combine(work, "slapd.pid"));
         }
+    }
+
+    /// <summary>
+    /// pmi.schema is the corpus file whose ldapsyntax NAME extension forced the
+    /// parser to go beyond RFC 4512's grammar. This pins, in CI, that slapd
+    /// accepts this specific file — the runtime witness for that one design
+    /// decision, not a proof of the parser's general slapd compatibility (the
+    /// rest of the corpus and the round-trip tests carry that weight).
+    /// </summary>
+    [DifferentialFact]
+    public void Slapd_accepts_the_vendored_pmi_schema()
+    {
+        string pmiSchema = Fixtures.PathOf("schemas/openldap/pmi.schema");
+        string work = Directory.CreateTempSubdirectory("ldifdotnet-slaptest").FullName;
+        string confFile = WriteSlapdConf(work, [$"{SchemaDir}/core.schema", pmiSchema]);
+
+        var slaptest = Run(Tool("slaptest"), "-f", confFile, "-u");
+        Assert.True(slaptest.ExitCode == 0,
+            $"slapd rejected a schema file our parser accepts:\n{slaptest.StdOut}{slaptest.StdErr}");
+
+        // And our side of the same claim, on the same file.
+        var schema = LdapSchema.Load(pmiSchema);
+        Assert.Equal(3, schema.Syntaxes.Count);
+        Assert.NotNull(schema.FindSyntax("AttCertPath"));
     }
 
     private static void AssertLoadsAndRoundTrips(

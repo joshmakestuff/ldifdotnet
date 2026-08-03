@@ -348,41 +348,8 @@ public sealed class LdifWriter : IDisposable
         return null;
     }
 
-    /// <summary>
-    /// RFC 2849 AttributeDescription: a numeric OID or a descr (ALPHA then
-    /// ALPHA / DIGIT / "-"), followed by zero or more non-empty ";option" parts.
-    /// </summary>
-    private static bool IsAttributeDescription(string name)
-    {
-        string[] parts = name.Split(';');
-        if (!RfcGrammar.IsNumericOid(parts[0]) && !IsDescr(parts[0]))
-            return false;
-        for (int i = 1; i < parts.Length; i++)
-        {
-            if (parts[i].Length == 0)
-                return false;
-            foreach (char c in parts[i])
-            {
-                if (!IsAttrTypeChar(c))
-                    return false;
-            }
-        }
-        return true;
-    }
-
-    private static bool IsDescr(string text)
-    {
-        if (text.Length == 0 || !char.IsAsciiLetter(text[0]))
-            return false;
-        foreach (char c in text)
-        {
-            if (!IsAttrTypeChar(c))
-                return false;
-        }
-        return true;
-    }
-
-    private static bool IsAttrTypeChar(char c) => char.IsAsciiLetterOrDigit(c) || c == '-';
+    /// <summary>One definition of "valid attribute description": <see cref="AttributeDescription.IsValid"/>.</summary>
+    private static bool IsAttributeDescription(string name) => AttributeDescription.IsValid(name);
 
     private void WriteAttributes(IReadOnlyList<LdifAttribute> attributes)
     {

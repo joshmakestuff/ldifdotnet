@@ -19,11 +19,11 @@ public class SchemaCorpusTests
     [MemberData(nameof(SchemaFiles))]
     public void Schema_file_contains_definitions(string relativePath)
     {
-        var (attributeTypes, objectClasses) = CountDefinitions(Fixtures.PathOf(relativePath));
+        var (attributeTypes, objectClasses, syntaxes) = CountDefinitions(Fixtures.PathOf(relativePath));
 
         Assert.True(
-            attributeTypes + objectClasses > 0,
-            $"{relativePath} contains no attributetype/objectclass definitions — corrupt fetch?");
+            attributeTypes + objectClasses + syntaxes > 0,
+            $"{relativePath} contains no schema definitions — corrupt fetch?");
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public class SchemaCorpusTests
         int totalAttributeTypes = 0, totalObjectClasses = 0;
         foreach (string file in files)
         {
-            var (attributeTypes, objectClasses) = CountDefinitions(Fixtures.PathOf(file));
+            var (attributeTypes, objectClasses, _) = CountDefinitions(Fixtures.PathOf(file));
             totalAttributeTypes += attributeTypes;
             totalObjectClasses += objectClasses;
         }
@@ -60,9 +60,9 @@ public class SchemaCorpusTests
             .Select(p => Path.GetRelativePath(Fixtures.Root, p).Replace('\\', '/'))
             .OrderBy(p => p, StringComparer.Ordinal);
 
-    internal static (int AttributeTypes, int ObjectClasses) CountDefinitions(string path)
+    internal static (int AttributeTypes, int ObjectClasses, int Syntaxes) CountDefinitions(string path)
     {
-        int attributeTypes = 0, objectClasses = 0;
+        int attributeTypes = 0, objectClasses = 0, syntaxes = 0;
         foreach (string line in File.ReadLines(path))
         {
             string trimmed = line.TrimStart();
@@ -70,7 +70,9 @@ public class SchemaCorpusTests
                 attributeTypes++;
             else if (trimmed.StartsWith("objectclass", StringComparison.OrdinalIgnoreCase))
                 objectClasses++;
+            else if (trimmed.StartsWith("ldapsyntax", StringComparison.OrdinalIgnoreCase))
+                syntaxes++;
         }
-        return (attributeTypes, objectClasses);
+        return (attributeTypes, objectClasses, syntaxes);
     }
 }

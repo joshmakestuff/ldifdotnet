@@ -13,6 +13,43 @@ public class SchemaParserTests
     }
 
     [Fact]
+    public void Ldapsyntax_directive_parses_in_file_mode()
+    {
+        // slapd.conf accepts ldapsyntax directives (verified with slaptest
+        // against OpenLDAP 2.6), so the file parser does too.
+        var schema = LdapSchema.Parse(
+            "ldapsyntax ( 1.2.3.4 DESC 'Probe Syntax' X-NOT-HUMAN-READABLE 'TRUE' )\n");
+
+        var syntax = Assert.Single(schema.Syntaxes);
+        Assert.Equal("1.2.3.4", syntax.Oid);
+        Assert.Equal("Probe Syntax", syntax.Description);
+        Assert.True(syntax.NotHumanReadable);
+    }
+
+    [Fact]
+    public void Ldapsyntax_directive_rejects_unknown_keywords_in_file_mode() =>
+        Assert.Throws<LdapSchemaParseException>(() => LdapSchema.Parse(
+            "ldapsyntax ( 1.2.3.4 DESC 'x' VENDORFLAG )\n"));
+
+    [Fact]
+    public void Ldapsyntax_name_is_a_supported_slapd_extension()
+    {
+        // Verbatim from OpenLDAP's shipped pmi.schema (slaptest-verified to
+        // load): NAME on a syntax is slapd's extension to RFC 4512.
+        var schema = LdapSchema.Parse(
+            "ldapsyntax ( 1.3.6.1.4.1.4203.666.11.10.2.4\n"
+            + "\tNAME 'AttCertPath'\n"
+            + "\tDESC 'X.509 PMI attribute certificate path: SEQUENCE OF AttributeCertificate'\n"
+            + "\tX-SUBST '1.3.6.1.4.1.1466.115.121.1.15' )\n");
+
+        var syntax = Assert.Single(schema.Syntaxes);
+        Assert.Equal("AttCertPath", syntax.Name);
+        Assert.Same(syntax, schema.FindSyntax("AttCertPath"));
+        Assert.Same(syntax, schema.FindSyntax("1.3.6.1.4.1.4203.666.11.10.2.4"));
+        Assert.Equal(["1.3.6.1.4.1.1466.115.121.1.15"], syntax.Extensions["X-SUBST"]);
+    }
+
+    [Fact]
     public void Rejects_undeclared_oid_macro_reference()
     {
         var ex = Assert.Throws<LdapSchemaParseException>(() => LdapSchema.Parse(
@@ -72,12 +109,15 @@ public class SchemaParserTests
     {
         string path = Fixtures.PathOf(relativePath);
         var schema = LdapSchema.Load(path);
-        var (expectedAttributeTypes, expectedObjectClasses) = SchemaCorpusTests.CountDefinitions(path);
+        var (expectedAttributeTypes, expectedObjectClasses, expectedSyntaxes) =
+            SchemaCorpusTests.CountDefinitions(path);
 
         Assert.Equal(expectedAttributeTypes, schema.AttributeTypes.Count);
         Assert.Equal(expectedObjectClasses, schema.ObjectClasses.Count);
+        Assert.Equal(expectedSyntaxes, schema.Syntaxes.Count);
         Assert.All(schema.AttributeTypes, a => Assert.NotEqual("", a.Oid));
         Assert.All(schema.ObjectClasses, c => Assert.NotEqual("", c.Oid));
+        Assert.All(schema.Syntaxes, s => Assert.NotEqual("", s.Oid));
     }
 
     [Theory]
