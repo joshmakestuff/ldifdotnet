@@ -328,17 +328,22 @@ public class SubschemaParseTests
     }
 
     [Fact]
-    public void Ldap_syntax_flag_reads_the_first_extension_value_only()
+    public void Ldap_syntax_flags_read_the_first_extension_value_only()
     {
         // Pins the rule for the undefined multi-valued case: the first value is
-        // the assertion (flag extensions are single-valued in every observed
-        // server; this matches the consumer parser this API supersedes). All
-        // values stay available in Extensions for consumers that disagree.
-        var trueFirst = LdapSyntax.Parse("( 1.2.3 X-NOT-HUMAN-READABLE ( 'TRUE' 'note' ) )");
+        // the assertion, for both flags. Every flag extension in the captured
+        // OpenLDAP corpus is single-valued, and first-value-only matches the
+        // consumer parser this API supersedes (AspireLdapAdmin's IsTrue reads
+        // values[0]). All values stay available in Extensions regardless.
+        var trueFirst = LdapSyntax.Parse(
+            "( 1.2.3 X-NOT-HUMAN-READABLE ( 'TRUE' 'note' ) X-BINARY-TRANSFER-REQUIRED ( 'TRUE' 'note' ) )");
         Assert.True(trueFirst.NotHumanReadable);
+        Assert.True(trueFirst.BinaryTransferRequired);
 
-        var trueSecond = LdapSyntax.Parse("( 1.2.3 X-NOT-HUMAN-READABLE ( 'note' 'TRUE' ) )");
+        var trueSecond = LdapSyntax.Parse(
+            "( 1.2.3 X-NOT-HUMAN-READABLE ( 'note' 'TRUE' ) X-BINARY-TRANSFER-REQUIRED ( 'note' 'TRUE' ) )");
         Assert.False(trueSecond.NotHumanReadable);
+        Assert.False(trueSecond.BinaryTransferRequired);
         Assert.Equal(["note", "TRUE"], trueSecond.Extensions["X-NOT-HUMAN-READABLE"]);
     }
 

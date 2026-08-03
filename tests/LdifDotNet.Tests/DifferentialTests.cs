@@ -159,10 +159,11 @@ public class DifferentialTests
     }
 
     /// <summary>
-    /// The file parser's contract is "what slapd accepts". pmi.schema is the
-    /// corpus file whose ldapsyntax NAME extension forced the parser to go
-    /// beyond RFC 4512's grammar — this pins slapd's side of that claim in CI
-    /// instead of in a comment, against the exact vendored file we parse.
+    /// pmi.schema is the corpus file whose ldapsyntax NAME extension forced the
+    /// parser to go beyond RFC 4512's grammar. This pins, in CI, that slapd
+    /// accepts this specific file — the runtime witness for that one design
+    /// decision, not a proof of the parser's general slapd compatibility (the
+    /// rest of the corpus and the round-trip tests carry that weight).
     /// </summary>
     [DifferentialFact]
     public void Slapd_accepts_the_vendored_pmi_schema()
