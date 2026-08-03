@@ -282,6 +282,134 @@ public class SubschemaParseTests
     }
 
     [Fact]
+    public void Ldap_syntax_parses_from_bare_definition()
+    {
+        // Verbatim OpenLDAP 2.6 shapes: only an explicit 'TRUE' asserts a flag.
+        var audio = LdapSyntax.Parse(
+            "( 1.3.6.1.4.1.1466.115.121.1.4 DESC 'Audio' X-NOT-HUMAN-READABLE 'TRUE' )");
+        Assert.Equal("1.3.6.1.4.1.1466.115.121.1.4", audio.Oid);
+        Assert.Equal("Audio", audio.Description);
+        Assert.True(audio.NotHumanReadable);
+        Assert.False(audio.BinaryTransferRequired);
+
+        var certificate = LdapSyntax.Parse(
+            "( 1.3.6.1.4.1.1466.115.121.1.8 DESC 'Certificate' "
+            + "X-BINARY-TRANSFER-REQUIRED 'TRUE' X-NOT-HUMAN-READABLE 'TRUE' )");
+        Assert.True(certificate.NotHumanReadable);
+        Assert.True(certificate.BinaryTransferRequired);
+        Assert.Equal(["TRUE"], certificate.Extensions["X-BINARY-TRANSFER-REQUIRED"]);
+
+        var directoryString = LdapSyntax.Parse(
+            "( 1.3.6.1.4.1.1466.115.121.1.15 DESC 'Directory String' )");
+        Assert.False(directoryString.NotHumanReadable);
+        Assert.False(directoryString.BinaryTransferRequired);
+        Assert.Empty(directoryString.Extensions);
+    }
+
+    [Fact]
+    public void Ldap_syntax_published_false_is_not_an_assertion()
+    {
+        var syntax = LdapSyntax.Parse(
+            "( 1.2.3 DESC 'x' X-NOT-HUMAN-READABLE 'FALSE' )");
+
+        Assert.False(syntax.NotHumanReadable);
+        // The extension value itself stays available for consumers that care.
+        Assert.Equal(["FALSE"], syntax.Extensions["X-NOT-HUMAN-READABLE"]);
+    }
+
+    [Fact]
+    public void Ldap_syntax_true_is_case_insensitive()
+    {
+        var syntax = LdapSyntax.Parse("( 1.2.3 DESC 'x' X-NOT-HUMAN-READABLE 'true' )");
+
+        Assert.True(syntax.NotHumanReadable);
+    }
+
+    [Fact]
+    public void Ldap_syntax_strict_parse_rejects_bad_input()
+    {
+        Assert.Throws<LdapSchemaParseException>(() => LdapSyntax.Parse(
+            "( 1.2.3 DESC 'x' VENDORFLAG )"));
+        Assert.Throws<LdapSchemaParseException>(() => LdapSyntax.Parse(
+            "( 1.2.3 DESC 'x' ) trailing"));
+        Assert.Throws<LdapSchemaParseException>(() => LdapSyntax.Parse(
+            "( notAnOid DESC 'x' )"));
+        Assert.Throws<ArgumentNullException>(() => LdapSyntax.Parse(null!));
+    }
+
+    [Fact]
+    public void Subschema_buckets_bad_syntax_with_its_kind()
+    {
+        var schema = LdapSchema.ParseSubschema([], [], ["( 1.2.3 DESC 'unterminated"]);
+
+        Assert.Empty(schema.Syntaxes);
+        var unparsed = Assert.Single(schema.UnparsedDefinitions);
+        Assert.Equal(LdapSchemaDefinitionKind.Syntax, unparsed.Kind);
+    }
+
+    [Fact]
+    public void Subschema_skips_unknown_keywords_in_syntax_definitions()
+    {
+        var schema = LdapSchema.ParseSubschema(
+            [], [], ["( 1.2.3 VENDORFLAG DESC 'x' VENDORKEY 'v' )"]);
+
+        Assert.Empty(schema.UnparsedDefinitions);
+        Assert.Equal("x", Assert.Single(schema.Syntaxes).Description);
+    }
+
+    [Fact]
+    public void Find_syntax_strips_length_bounds()
+    {
+        var schema = LdapSchema.ParseSubschema(
+            [], [], ["( 1.3.6.1.4.1.1466.115.121.1.15 DESC 'Directory String' )"]);
+
+        var syntax = schema.FindSyntax("1.3.6.1.4.1.1466.115.121.1.15");
+        Assert.NotNull(syntax);
+        // A raw bounded SYNTAX reference finds the same syntax: the {bound} is
+        // not part of the OID's identity.
+        Assert.Same(syntax, schema.FindSyntax("1.3.6.1.4.1.1466.115.121.1.15{32768}"));
+        Assert.Null(schema.FindSyntax("1.2.3"));
+    }
+
+    [Fact]
+    public void Resolve_syntax_oid_walks_the_sup_chain()
+    {
+        var schema = LdapSchema.ParseSubschema([NameDefinition, CnDefinition], []);
+        var cn = schema.FindAttributeType("cn");
+        var name = schema.FindAttributeType("name");
+        Assert.NotNull(cn);
+        Assert.NotNull(name);
+
+        // cn declares no SYNTAX; it inherits Directory String through SUP name.
+        Assert.Null(cn.Syntax);
+        Assert.Equal("1.3.6.1.4.1.1466.115.121.1.15", schema.ResolveSyntaxOid(cn));
+        Assert.Equal("1.3.6.1.4.1.1466.115.121.1.15", schema.ResolveSyntaxOid(name));
+    }
+
+    [Fact]
+    public void Resolve_syntax_oid_returns_null_for_missing_superior()
+    {
+        var schema = LdapSchema.ParseSubschema([CnDefinition], []);
+        var cn = schema.FindAttributeType("cn");
+        Assert.NotNull(cn);
+
+        Assert.Null(schema.ResolveSyntaxOid(cn));
+    }
+
+    [Fact]
+    public void Resolve_syntax_oid_survives_a_sup_cycle()
+    {
+        // A malformed schema with a SUP loop must terminate with null, not hang.
+        var schema = LdapSchema.ParseSubschema(
+            ["( 1.2.3.1 NAME 'a' SUP b )", "( 1.2.3.2 NAME 'b' SUP a )"],
+            []);
+        var a = schema.FindAttributeType("a");
+        Assert.NotNull(a);
+
+        Assert.Null(schema.ResolveSyntaxOid(a));
+    }
+
+    [Fact]
     public void Real_openldap_subschema_capture_parses_completely()
     {
         // The fixture is a real slapd 2.6 server's cn=Subschema answer (see
@@ -302,13 +430,16 @@ public class SubschemaParseTests
 
         var schema = LdapSchema.ParseSubschema(
             ValuesOf(entry, "attributeTypes"),
-            ValuesOf(entry, "objectClasses"));
+            ValuesOf(entry, "objectClasses"),
+            ValuesOf(entry, "ldapSyntaxes"));
 
         Assert.Empty(schema.UnparsedDefinitions);
         Assert.True(schema.AttributeTypes.Count > 200,
             $"expected the full published attribute set, got {schema.AttributeTypes.Count}");
         Assert.True(schema.ObjectClasses.Count > 50,
             $"expected the full published class set, got {schema.ObjectClasses.Count}");
+        Assert.True(schema.Syntaxes.Count > 25,
+            $"expected the full published syntax set, got {schema.Syntaxes.Count}");
 
         // Shapes a schema file never contains: cn published as SUP name with no
         // SYNTAX, and bounded syntax OIDs stripped to the bare OID.
@@ -320,8 +451,24 @@ public class SubschemaParseTests
 
         var name = schema.FindAttributeType("name");
         Assert.NotNull(name);
+        Assert.NotNull(name.Syntax);
         Assert.Equal("1.3.6.1.4.1.1466.115.121.1.15", name.Syntax);
         Assert.Equal(32768, name.SyntaxLength);
+
+        // Real-data SUP-chain resolution: cn's syntax comes from name, and the
+        // resolved OID finds the published Directory String syntax definition.
+        Assert.Equal(name.Syntax, schema.ResolveSyntaxOid(cn));
+        var directoryString = schema.FindSyntax(name.Syntax);
+        Assert.NotNull(directoryString);
+        Assert.Equal("Directory String", directoryString.Description);
+
+        // How a real server declares octet-carrying syntaxes.
+        var audio = schema.FindSyntax("1.3.6.1.4.1.1466.115.121.1.4");
+        Assert.NotNull(audio);
+        Assert.True(audio.NotHumanReadable);
+        var certificate = schema.FindSyntax("1.3.6.1.4.1.1466.115.121.1.8");
+        Assert.NotNull(certificate);
+        Assert.True(certificate.BinaryTransferRequired);
 
         var person = schema.FindObjectClass("person");
         Assert.NotNull(person);

@@ -23,13 +23,19 @@ consumer cannot fix a server's schema, so a definition that fails to parse is
 preserved raw in `UnparsedDefinitions` instead of failing the whole schema:
 
 ```csharp
-// attributeTypes / objectClasses values fetched from the subschema subentry
-var schema = LdapSchema.ParseSubschema(attributeTypeValues, objectClassValues);
+// attributeTypes / objectClasses / ldapSyntaxes values from the subschema subentry
+var schema = LdapSchema.ParseSubschema(attributeTypeValues, objectClassValues, ldapSyntaxValues);
 foreach (var bad in schema.UnparsedDefinitions)
     Console.WriteLine($"unparsed {bad.Kind}: {bad.Error}");
 
+// A live server publishes cn as "SUP name" with no SYNTAX; resolution walks the chain:
+var cn = schema.FindAttributeType("cn");
+string? syntaxOid = schema.ResolveSyntaxOid(cn);        // 1.3.6.1.4.1.1466.115.121.1.15
+var syntax = schema.FindSyntax(syntaxOid);              // bounds like {32768} strip automatically
+bool octets = syntax.NotHumanReadable;                  // OpenLDAP's X-NOT-HUMAN-READABLE 'TRUE'
+
 // Strict single-definition parsing is also available:
-var cn = LdapAttributeType.Parse("( 2.5.4.3 NAME ( 'cn' 'commonName' ) SUP name )");
+var sn = LdapAttributeType.Parse("( 2.5.4.4 NAME ( 'sn' 'surname' ) SUP name )");
 ```
 
 Proven against OpenLDAP's complete shipped schema set plus eduPerson,

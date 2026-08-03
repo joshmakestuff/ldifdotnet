@@ -46,24 +46,41 @@ namespace LdifDotNet.Schema
     {
         public System.Collections.Generic.IReadOnlyList<LdifDotNet.Schema.LdapAttributeType> AttributeTypes { get; }
         public System.Collections.Generic.IReadOnlyList<LdifDotNet.Schema.LdapObjectClass> ObjectClasses { get; }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.Schema.LdapSyntax> Syntaxes { get; }
         public System.Collections.Generic.IReadOnlyList<LdifDotNet.Schema.LdapUnparsedDefinition> UnparsedDefinitions { get; }
         public LdifDotNet.Schema.LdapAttributeType? FindAttributeType(string nameOrOid) { }
         public LdifDotNet.Schema.LdapObjectClass? FindObjectClass(string nameOrOid) { }
+        public LdifDotNet.Schema.LdapSyntax? FindSyntax(string nameOrOid) { }
         public System.Collections.Generic.IReadOnlyList<string> OptionalAttributeNames(LdifDotNet.Schema.LdapObjectClass objectClass) { }
         public System.Collections.Generic.IReadOnlyList<string> RequiredAttributeNames(LdifDotNet.Schema.LdapObjectClass objectClass) { }
+        public string? ResolveSyntaxOid(LdifDotNet.Schema.LdapAttributeType attributeType) { }
         public static LdifDotNet.Schema.LdapSchema Load(params string[] paths) { }
         public static LdifDotNet.Schema.LdapSchema Parse(string text) { }
         public static LdifDotNet.Schema.LdapSchema ParseSubschema(System.Collections.Generic.IEnumerable<string> attributeTypeDefinitions, System.Collections.Generic.IEnumerable<string> objectClassDefinitions) { }
+        public static LdifDotNet.Schema.LdapSchema ParseSubschema(System.Collections.Generic.IEnumerable<string> attributeTypeDefinitions, System.Collections.Generic.IEnumerable<string> objectClassDefinitions, System.Collections.Generic.IEnumerable<string> ldapSyntaxDefinitions) { }
     }
     public enum LdapSchemaDefinitionKind
     {
         AttributeType = 0,
         ObjectClass = 1,
+        Syntax = 2,
     }
     public sealed class LdapSchemaParseException : System.Exception
     {
         public LdapSchemaParseException(string message, int lineNumber) { }
         public int LineNumber { get; }
+    }
+    public sealed class LdapSyntax
+    {
+        public bool BinaryTransferRequired { get; }
+        public string? Description { get; }
+        public System.Collections.Generic.IReadOnlyDictionary<string, System.Collections.Generic.IReadOnlyList<string>> Extensions { get; }
+        public string Name { get; }
+        public System.Collections.Generic.IReadOnlyList<string> Names { get; }
+        public bool NotHumanReadable { get; }
+        public string Oid { get; }
+        public override string ToString() { }
+        public static LdifDotNet.Schema.LdapSyntax Parse(string definition) { }
     }
     public sealed class LdapUnparsedDefinition
     {

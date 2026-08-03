@@ -1,5 +1,11 @@
 namespace LdifDotNet
 {
+    public static class AttributeDescription
+    {
+        public static bool HasOption(string description, string option) { }
+        public static bool IsValid(string description) { }
+        public static string TypeOf(string description) { }
+    }
     public readonly struct AttributeTypeAndValue : System.IEquatable<LdifDotNet.AttributeTypeAndValue>
     {
         public AttributeTypeAndValue(string Type, string Value) { }
