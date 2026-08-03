@@ -26,6 +26,7 @@ public class AttributeDescriptionTests
     [Theory]
     [InlineData("cn", true)]
     [InlineData("2.5.4.3", true)]
+    [InlineData("01.2.3", true)] // RFC 2849 ldap-oid allows leading zeros — deliberate, see RfcGrammar.IsNumericOid
     [InlineData("userCertificate;binary", true)]
     [InlineData("cn;lang-en;binary", true)]
     [InlineData("", false)]
