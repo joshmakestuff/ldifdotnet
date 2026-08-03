@@ -9,6 +9,20 @@ public sealed class LdapObjectClass
     {
     }
 
+    /// <summary>
+    /// Parses one bare parenthesized object class description (RFC 4512 §4.1.1),
+    /// the form a subschema subentry publishes as objectClasses values, e.g.
+    /// "( 2.5.6.6 NAME 'person' SUP top STRUCTURAL MUST ( sn $ cn ) )". Strict: an
+    /// unknown keyword, a non-numeric OID, or trailing text throws
+    /// <see cref="LdapSchemaParseException"/>; for input a server published, use
+    /// the lenient <see cref="LdapSchema.ParseSubschema"/>.
+    /// </summary>
+    public static LdapObjectClass Parse(string definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return new SchemaParser().ParseObjectClassDefinition(definition, lenient: false);
+    }
+
     /// <summary>The numeric OID that identifies this object class.</summary>
     public string Oid { get; internal set; } = "";
 

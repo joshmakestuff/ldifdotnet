@@ -19,6 +19,7 @@ namespace LdifDotNet.Schema
         public int? SyntaxLength { get; }
         public string? Usage { get; }
         public override string ToString() { }
+        public static LdifDotNet.Schema.LdapAttributeType Parse(string definition) { }
     }
     public sealed class LdapObjectClass
     {
@@ -33,6 +34,7 @@ namespace LdifDotNet.Schema
         public string Oid { get; }
         public System.Collections.Generic.IReadOnlyList<string> SuperiorNames { get; }
         public override string ToString() { }
+        public static LdifDotNet.Schema.LdapObjectClass Parse(string definition) { }
     }
     public enum LdapObjectClassKind
     {
@@ -44,16 +46,30 @@ namespace LdifDotNet.Schema
     {
         public System.Collections.Generic.IReadOnlyList<LdifDotNet.Schema.LdapAttributeType> AttributeTypes { get; }
         public System.Collections.Generic.IReadOnlyList<LdifDotNet.Schema.LdapObjectClass> ObjectClasses { get; }
+        public System.Collections.Generic.IReadOnlyList<LdifDotNet.Schema.LdapUnparsedDefinition> UnparsedDefinitions { get; }
         public LdifDotNet.Schema.LdapAttributeType? FindAttributeType(string nameOrOid) { }
         public LdifDotNet.Schema.LdapObjectClass? FindObjectClass(string nameOrOid) { }
         public System.Collections.Generic.IReadOnlyList<string> OptionalAttributeNames(LdifDotNet.Schema.LdapObjectClass objectClass) { }
         public System.Collections.Generic.IReadOnlyList<string> RequiredAttributeNames(LdifDotNet.Schema.LdapObjectClass objectClass) { }
         public static LdifDotNet.Schema.LdapSchema Load(params string[] paths) { }
         public static LdifDotNet.Schema.LdapSchema Parse(string text) { }
+        public static LdifDotNet.Schema.LdapSchema ParseSubschema(System.Collections.Generic.IEnumerable<string> attributeTypeDefinitions, System.Collections.Generic.IEnumerable<string> objectClassDefinitions) { }
+    }
+    public enum LdapSchemaDefinitionKind
+    {
+        AttributeType = 0,
+        ObjectClass = 1,
     }
     public sealed class LdapSchemaParseException : System.Exception
     {
         public LdapSchemaParseException(string message, int lineNumber) { }
         public int LineNumber { get; }
+    }
+    public sealed class LdapUnparsedDefinition
+    {
+        public string Definition { get; }
+        public string Error { get; }
+        public LdifDotNet.Schema.LdapSchemaDefinitionKind Kind { get; }
+        public override string ToString() { }
     }
 }

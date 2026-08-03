@@ -7,6 +7,19 @@ public sealed class LdapAttributeType
     {
     }
 
+    /// <summary>
+    /// Parses one bare parenthesized attribute type description (RFC 4512 §4.1.2),
+    /// the form a subschema subentry publishes as attributeTypes values, e.g.
+    /// "( 2.5.4.4 NAME ( 'sn' 'surname' ) SUP name )". Strict: an unknown keyword,
+    /// a non-numeric OID, or trailing text throws <see cref="LdapSchemaParseException"/>;
+    /// for input a server published, use the lenient <see cref="LdapSchema.ParseSubschema"/>.
+    /// </summary>
+    public static LdapAttributeType Parse(string definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return new SchemaParser().ParseAttributeTypeDefinition(definition, lenient: false);
+    }
+
     /// <summary>The numeric OID that identifies this attribute type.</summary>
     public string Oid { get; internal set; } = "";
 

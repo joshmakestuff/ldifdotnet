@@ -1,6 +1,7 @@
 #pragma warning disable MA0048 // Deliberate: the gating attribute is colocated with the tests it gates
 
 using System.Diagnostics;
+using System.Globalization;
 using LdifDotNet.Generator;
 using LdifDotNet.Schema;
 
@@ -90,26 +91,66 @@ public class DifferentialTests
         AssertLoadsAndRoundTrips(records, schemaFiles);
     }
 
+    /// <summary>
+    /// Reads the subschema subentry from a running slapd — the input shape
+    /// LdapSchema.ParseSubschema exists for, and one slapcat cannot produce
+    /// (cn=Subschema is synthesized at runtime, not stored in the database).
+    /// Every definition a real server publishes must parse.
+    /// </summary>
+    [DifferentialFact]
+    public void Live_subschema_parses_completely()
+    {
+        string work = Directory.CreateTempSubdirectory("ldifdotnet-subschema").FullName;
+        string confFile = WriteSlapdConf(work,
+            [$"{SchemaDir}/core.schema", $"{SchemaDir}/cosine.schema", $"{SchemaDir}/inetorgperson.schema"]);
+        string url = "ldapi://" + Uri.EscapeDataString(Path.Combine(work, "ldapi"));
+
+        // slapd's parent process exits only after the listener is up, so a zero
+        // exit code means the server is already answering.
+        var slapd = Run(Tool("slapd"), "-f", confFile, "-h", url);
+        Assert.True(slapd.ExitCode == 0, $"slapd failed to start:\n{slapd.StdOut}{slapd.StdErr}");
+        try
+        {
+            var search = Run(Tool("ldapsearch"), "-LL", "-H", url, "-x", "-s", "base",
+                "-b", "cn=Subschema", "(objectClass=subschema)", "attributeTypes", "objectClasses");
+            Assert.True(search.ExitCode == 0, $"ldapsearch failed:\n{search.StdErr}");
+
+            // Dogfood: ldapsearch answers in LDIF, so our own reader unfolds it.
+            var entry = Assert.IsType<LdifContentRecord>(Assert.Single(LdifReader.Parse(search.StdOut)));
+            var attributeTypes = entry["attributeTypes"];
+            var objectClasses = entry["objectClasses"];
+            Assert.NotNull(attributeTypes);
+            Assert.NotNull(objectClasses);
+
+            var schema = LdapSchema.ParseSubschema(
+                attributeTypes.Values.Select(v => v.AsString()),
+                objectClasses.Values.Select(v => v.AsString()));
+
+            Assert.True(schema.UnparsedDefinitions.Count == 0,
+                "definitions a live server published failed to parse:\n" + string.Join(
+                    "\n", schema.UnparsedDefinitions.Select(u => $"{u.Error}: {u.Definition}")));
+            Assert.True(schema.AttributeTypes.Count > 200,
+                $"expected the full published attribute set, got {schema.AttributeTypes.Count}");
+            Assert.True(schema.ObjectClasses.Count > 50,
+                $"expected the full published class set, got {schema.ObjectClasses.Count}");
+
+            // The shape schema files never contain: cn published with SUP and no SYNTAX.
+            var cn = schema.FindAttributeType("cn");
+            Assert.NotNull(cn);
+            Assert.Equal("name", cn.SuperiorName);
+            Assert.Null(cn.Syntax);
+        }
+        finally
+        {
+            StopSlapd(Path.Combine(work, "slapd.pid"));
+        }
+    }
+
     private static void AssertLoadsAndRoundTrips(
         IReadOnlyList<LdifContentRecord> records, IEnumerable<string> schemaIncludes)
     {
         string work = Directory.CreateTempSubdirectory("ldifdotnet-differential").FullName;
-        string databaseDir = Path.Combine(work, "db");
-        Directory.CreateDirectory(databaseDir);
-        string modulePath = Environment.GetEnvironmentVariable("LDIF_SLAPD_MODULEPATH") ?? "/usr/lib/ldap";
-
-        string confFile = Path.Combine(work, "slapd.conf");
-        string includes = string.Join('\n', schemaIncludes.Select(path => $"include {path}"));
-        File.WriteAllText(confFile, $"""
-            {includes}
-            modulepath {modulePath}
-            moduleload back_mdb
-            database mdb
-            suffix "dc=example,dc=com"
-            rootdn "cn=admin,dc=example,dc=com"
-            directory {databaseDir}
-
-            """);
+        string confFile = WriteSlapdConf(work, schemaIncludes);
 
         string dataFile = Path.Combine(work, "data.ldif");
         // slapadd (unlike ldapadd) rejects the RFC 2849 version line — a real
@@ -155,6 +196,49 @@ public class DifferentialTests
         foreach (var values in attributes.Values)
             values.Sort(StringComparer.Ordinal);
         return string.Join("\n", attributes.Select(kv => $"{kv.Key}: {string.Join(" | ", kv.Value)}"));
+    }
+
+    /// <summary>Writes a minimal slapd.conf into <paramref name="work"/> and returns its path.</summary>
+    private static string WriteSlapdConf(string work, IEnumerable<string> schemaIncludes)
+    {
+        string databaseDir = Path.Combine(work, "db");
+        Directory.CreateDirectory(databaseDir);
+        string modulePath = Environment.GetEnvironmentVariable("LDIF_SLAPD_MODULEPATH") ?? "/usr/lib/ldap";
+
+        string confFile = Path.Combine(work, "slapd.conf");
+        string includes = string.Join('\n', schemaIncludes.Select(path => $"include {path}"));
+        File.WriteAllText(confFile, $"""
+            {includes}
+            modulepath {modulePath}
+            moduleload back_mdb
+            pidfile {Path.Combine(work, "slapd.pid")}
+            database mdb
+            suffix "dc=example,dc=com"
+            rootdn "cn=admin,dc=example,dc=com"
+            directory {databaseDir}
+
+            """);
+        return confFile;
+    }
+
+    /// <summary>Kills the slapd whose pid file startup wrote; tolerates it being gone already.</summary>
+    private static void StopSlapd(string pidFile)
+    {
+        if (!File.Exists(pidFile)
+            || !int.TryParse(File.ReadAllText(pidFile).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int pid))
+        {
+            return;
+        }
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            process.Kill();
+            process.WaitForExit();
+        }
+        catch (ArgumentException)
+        {
+            // The process already exited.
+        }
     }
 
     private static string Tool(string name)
