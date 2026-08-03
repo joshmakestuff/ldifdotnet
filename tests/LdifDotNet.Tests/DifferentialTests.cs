@@ -158,6 +158,29 @@ public class DifferentialTests
         }
     }
 
+    /// <summary>
+    /// The file parser's contract is "what slapd accepts". pmi.schema is the
+    /// corpus file whose ldapsyntax NAME extension forced the parser to go
+    /// beyond RFC 4512's grammar — this pins slapd's side of that claim in CI
+    /// instead of in a comment, against the exact vendored file we parse.
+    /// </summary>
+    [DifferentialFact]
+    public void Slapd_accepts_the_vendored_pmi_schema()
+    {
+        string pmiSchema = Fixtures.PathOf("schemas/openldap/pmi.schema");
+        string work = Directory.CreateTempSubdirectory("ldifdotnet-slaptest").FullName;
+        string confFile = WriteSlapdConf(work, [$"{SchemaDir}/core.schema", pmiSchema]);
+
+        var slaptest = Run(Tool("slaptest"), "-f", confFile, "-u");
+        Assert.True(slaptest.ExitCode == 0,
+            $"slapd rejected a schema file our parser accepts:\n{slaptest.StdOut}{slaptest.StdErr}");
+
+        // And our side of the same claim, on the same file.
+        var schema = LdapSchema.Load(pmiSchema);
+        Assert.Equal(3, schema.Syntaxes.Count);
+        Assert.NotNull(schema.FindSyntax("AttCertPath"));
+    }
+
     private static void AssertLoadsAndRoundTrips(
         IReadOnlyList<LdifContentRecord> records, IEnumerable<string> schemaIncludes)
     {

@@ -277,8 +277,10 @@ public class SubschemaParseTests
     {
         Assert.Throws<ArgumentNullException>(() => LdapSchema.ParseSubschema(null!, []));
         Assert.Throws<ArgumentNullException>(() => LdapSchema.ParseSubschema([], null!));
+        Assert.Throws<ArgumentNullException>(() => LdapSchema.ParseSubschema([], [], null!));
         Assert.Throws<ArgumentException>(() => LdapSchema.ParseSubschema([null!], []));
         Assert.Throws<ArgumentException>(() => LdapSchema.ParseSubschema([], [null!]));
+        Assert.Throws<ArgumentException>(() => LdapSchema.ParseSubschema([], [], [null!]));
     }
 
     [Fact]
@@ -323,6 +325,21 @@ public class SubschemaParseTests
         var syntax = LdapSyntax.Parse("( 1.2.3 DESC 'x' X-NOT-HUMAN-READABLE 'true' )");
 
         Assert.True(syntax.NotHumanReadable);
+    }
+
+    [Fact]
+    public void Ldap_syntax_flag_reads_the_first_extension_value_only()
+    {
+        // Pins the rule for the undefined multi-valued case: the first value is
+        // the assertion (flag extensions are single-valued in every observed
+        // server; this matches the consumer parser this API supersedes). All
+        // values stay available in Extensions for consumers that disagree.
+        var trueFirst = LdapSyntax.Parse("( 1.2.3 X-NOT-HUMAN-READABLE ( 'TRUE' 'note' ) )");
+        Assert.True(trueFirst.NotHumanReadable);
+
+        var trueSecond = LdapSyntax.Parse("( 1.2.3 X-NOT-HUMAN-READABLE ( 'note' 'TRUE' ) )");
+        Assert.False(trueSecond.NotHumanReadable);
+        Assert.Equal(["note", "TRUE"], trueSecond.Extensions["X-NOT-HUMAN-READABLE"]);
     }
 
     [Fact]
