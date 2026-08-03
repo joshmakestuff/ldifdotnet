@@ -15,7 +15,15 @@ internal static class RfcGrammar
     /// </summary>
     internal static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
-    /// <summary>RFC 4512 numericoid / RFC 2849 ldap-oid: 1*DIGIT *("." 1*DIGIT).</summary>
+    /// <summary>
+    /// Numeric OID, deliberately the looser RFC 2849 ldap-oid grammar
+    /// (1*DIGIT *("." 1*DIGIT)) rather than RFC 4512's numericoid: leading-zero
+    /// arcs and single-arc OIDs are accepted. Correct per spec on every LDIF
+    /// boundary, and matched to slapd on the schema boundary — slaptest 2.6
+    /// accepts 01.2.3.4.5, 1.02.3, and bare 1 in attributetype directives, so
+    /// tightening this would reject files slapd loads. Pinned by tests; do not
+    /// "fix" toward RFC 4512 without re-probing slapd.
+    /// </summary>
     internal static bool IsNumericOid(string text)
     {
         bool expectDigit = true;
