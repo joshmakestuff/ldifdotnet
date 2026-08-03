@@ -11,13 +11,18 @@ public sealed class LdapSchema
 {
     private readonly List<LdapAttributeType> _attributeTypes;
     private readonly List<LdapObjectClass> _objectClasses;
+    private readonly List<LdapUnparsedDefinition> _unparsedDefinitions;
     private readonly Dictionary<string, LdapAttributeType> _attributeIndex = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LdapObjectClass> _classIndex = new(StringComparer.OrdinalIgnoreCase);
 
-    private LdapSchema(List<LdapAttributeType> attributeTypes, List<LdapObjectClass> objectClasses)
+    private LdapSchema(
+        List<LdapAttributeType> attributeTypes,
+        List<LdapObjectClass> objectClasses,
+        List<LdapUnparsedDefinition>? unparsedDefinitions = null)
     {
         _attributeTypes = attributeTypes;
         _objectClasses = objectClasses;
+        _unparsedDefinitions = unparsedDefinitions ?? [];
 
         foreach (var attributeType in attributeTypes)
         {
@@ -74,11 +79,68 @@ public sealed class LdapSchema
         return new LdapSchema(attributeTypes, objectClasses);
     }
 
+    /// <summary>
+    /// Parses definition values as a server publishes them in its subschema
+    /// subentry (RFC 4512 §4.2): each value is one bare parenthesized definition,
+    /// e.g. "( 2.5.6.6 NAME 'person' ... )". Lenient, because a live server's
+    /// schema cannot be fixed by the consumer: a definition that fails to parse
+    /// is preserved in <see cref="UnparsedDefinitions"/> instead of failing the
+    /// whole schema, and an unknown keyword inside a definition is skipped
+    /// rather than failing that definition.
+    /// </summary>
+    public static LdapSchema ParseSubschema(
+        IEnumerable<string> attributeTypeDefinitions,
+        IEnumerable<string> objectClassDefinitions)
+    {
+        ArgumentNullException.ThrowIfNull(attributeTypeDefinitions);
+        ArgumentNullException.ThrowIfNull(objectClassDefinitions);
+
+        var parser = new SchemaParser();
+        var attributeTypes = new List<LdapAttributeType>();
+        var objectClasses = new List<LdapObjectClass>();
+        var unparsed = new List<LdapUnparsedDefinition>();
+
+        foreach (string definition in attributeTypeDefinitions)
+        {
+            if (definition is null)
+                throw new ArgumentException("Definition values must not be null.", nameof(attributeTypeDefinitions));
+            try
+            {
+                attributeTypes.Add(parser.ParseAttributeTypeDefinition(definition, lenient: true));
+            }
+            catch (LdapSchemaParseException e)
+            {
+                unparsed.Add(new LdapUnparsedDefinition(LdapSchemaDefinitionKind.AttributeType, definition, e.Message));
+            }
+        }
+        foreach (string definition in objectClassDefinitions)
+        {
+            if (definition is null)
+                throw new ArgumentException("Definition values must not be null.", nameof(objectClassDefinitions));
+            try
+            {
+                objectClasses.Add(parser.ParseObjectClassDefinition(definition, lenient: true));
+            }
+            catch (LdapSchemaParseException e)
+            {
+                unparsed.Add(new LdapUnparsedDefinition(LdapSchemaDefinitionKind.ObjectClass, definition, e.Message));
+            }
+        }
+        return new LdapSchema(attributeTypes, objectClasses, unparsed);
+    }
+
     /// <summary>All attribute types in declaration order.</summary>
     public IReadOnlyList<LdapAttributeType> AttributeTypes => _attributeTypes;
 
     /// <summary>All object classes in declaration order.</summary>
     public IReadOnlyList<LdapObjectClass> ObjectClasses => _objectClasses;
+
+    /// <summary>
+    /// Definitions <see cref="ParseSubschema"/> could not parse, raw text
+    /// preserved. Always empty for the strict <see cref="Load"/> and
+    /// <see cref="Parse"/> paths, which throw on the first error instead.
+    /// </summary>
+    public IReadOnlyList<LdapUnparsedDefinition> UnparsedDefinitions => _unparsedDefinitions;
 
     /// <summary>Finds an attribute type by any of its names or its OID, or null.</summary>
     public LdapAttributeType? FindAttributeType(string nameOrOid)
