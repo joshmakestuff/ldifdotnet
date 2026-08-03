@@ -109,12 +109,15 @@ public class SchemaParserTests
     {
         string path = Fixtures.PathOf(relativePath);
         var schema = LdapSchema.Load(path);
-        var (expectedAttributeTypes, expectedObjectClasses) = SchemaCorpusTests.CountDefinitions(path);
+        var (expectedAttributeTypes, expectedObjectClasses, expectedSyntaxes) =
+            SchemaCorpusTests.CountDefinitions(path);
 
         Assert.Equal(expectedAttributeTypes, schema.AttributeTypes.Count);
         Assert.Equal(expectedObjectClasses, schema.ObjectClasses.Count);
+        Assert.Equal(expectedSyntaxes, schema.Syntaxes.Count);
         Assert.All(schema.AttributeTypes, a => Assert.NotEqual("", a.Oid));
         Assert.All(schema.ObjectClasses, c => Assert.NotEqual("", c.Oid));
+        Assert.All(schema.Syntaxes, s => Assert.NotEqual("", s.Oid));
     }
 
     [Theory]
