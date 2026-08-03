@@ -23,3 +23,9 @@ string unwrapped = LdifWriter.WriteToString(records, new LdifWriterOptions { Wra
 Handles folding, comments, base64 values and DNs, URL value references
 (never auto-resolved), all changetypes, controls, and OpenLDAP's
 modify-increment extension (RFC 4525).
+
+Also includes `Dn` (RFC 4514 parsing/escaping) and `AttributeDescription`
+(RFC 4512 §2.5 mechanics: `TypeOf("cn;lang-en")` is `"cn"`,
+`HasOption("userCertificate;binary", "binary")` detects the RFC 4522 transfer
+option, and `IsValid` is the writer's own definition of a legal attribute
+description).
