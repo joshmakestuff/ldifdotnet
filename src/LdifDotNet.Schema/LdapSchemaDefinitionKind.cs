@@ -8,4 +8,7 @@ public enum LdapSchemaDefinitionKind
 
     /// <summary>An object class description (RFC 4512 §4.1.1), from objectClasses values.</summary>
     ObjectClass,
+
+    /// <summary>An LDAP syntax description (RFC 4512 §4.1.5), from ldapSyntaxes values.</summary>
+    Syntax,
 }

@@ -15,7 +15,8 @@ public sealed class LdapObjectClass
     /// "( 2.5.6.6 NAME 'person' SUP top STRUCTURAL MUST ( sn $ cn ) )". Strict: an
     /// unknown keyword, a non-numeric OID, or trailing text throws
     /// <see cref="LdapSchemaParseException"/>; for input a server published, use
-    /// the lenient <see cref="LdapSchema.ParseSubschema"/>.
+    /// the lenient
+    /// <see cref="LdapSchema.ParseSubschema(IEnumerable{string}, IEnumerable{string}, IEnumerable{string})"/>.
     /// </summary>
     public static LdapObjectClass Parse(string definition)
     {

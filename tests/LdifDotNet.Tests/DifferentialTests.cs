@@ -112,19 +112,23 @@ public class DifferentialTests
         try
         {
             var search = Run(Tool("ldapsearch"), "-LL", "-H", url, "-x", "-s", "base",
-                "-b", "cn=Subschema", "(objectClass=subschema)", "attributeTypes", "objectClasses");
+                "-b", "cn=Subschema", "(objectClass=subschema)",
+                "attributeTypes", "objectClasses", "ldapSyntaxes");
             Assert.True(search.ExitCode == 0, $"ldapsearch failed:\n{search.StdErr}");
 
             // Dogfood: ldapsearch answers in LDIF, so our own reader unfolds it.
             var entry = Assert.IsType<LdifContentRecord>(Assert.Single(LdifReader.Parse(search.StdOut)));
             var attributeTypes = entry["attributeTypes"];
             var objectClasses = entry["objectClasses"];
+            var ldapSyntaxes = entry["ldapSyntaxes"];
             Assert.NotNull(attributeTypes);
             Assert.NotNull(objectClasses);
+            Assert.NotNull(ldapSyntaxes);
 
             var schema = LdapSchema.ParseSubschema(
                 attributeTypes.Values.Select(v => v.AsString()),
-                objectClasses.Values.Select(v => v.AsString()));
+                objectClasses.Values.Select(v => v.AsString()),
+                ldapSyntaxes.Values.Select(v => v.AsString()));
 
             Assert.True(schema.UnparsedDefinitions.Count == 0,
                 "definitions a live server published failed to parse:\n" + string.Join(
@@ -133,12 +137,20 @@ public class DifferentialTests
                 $"expected the full published attribute set, got {schema.AttributeTypes.Count}");
             Assert.True(schema.ObjectClasses.Count > 50,
                 $"expected the full published class set, got {schema.ObjectClasses.Count}");
+            Assert.True(schema.Syntaxes.Count > 25,
+                $"expected the full published syntax set, got {schema.Syntaxes.Count}");
 
             // The shape schema files never contain: cn published with SUP and no SYNTAX.
             var cn = schema.FindAttributeType("cn");
             Assert.NotNull(cn);
             Assert.Equal("name", cn.SuperiorName);
             Assert.Null(cn.Syntax);
+            Assert.Equal("1.3.6.1.4.1.1466.115.121.1.15", schema.ResolveSyntaxOid(cn));
+
+            // How a live server declares octet-carrying syntaxes.
+            var audio = schema.FindSyntax("1.3.6.1.4.1.1466.115.121.1.4");
+            Assert.NotNull(audio);
+            Assert.True(audio.NotHumanReadable);
         }
         finally
         {

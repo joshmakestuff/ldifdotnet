@@ -12,7 +12,11 @@ internal sealed class SchemaParser
 {
     private readonly Dictionary<string, string> _oidMacros = new(StringComparer.OrdinalIgnoreCase);
 
-    public void ParseInto(string text, List<LdapAttributeType> attributeTypes, List<LdapObjectClass> objectClasses)
+    public void ParseInto(
+        string text,
+        List<LdapAttributeType> attributeTypes,
+        List<LdapObjectClass> objectClasses,
+        List<LdapSyntax> syntaxes)
     {
         foreach (var (directive, lineNumber) in Directives(text))
         {
@@ -27,6 +31,9 @@ internal sealed class SchemaParser
                     break;
                 case "objectclass" or "objectclasses":
                     objectClasses.Add(ParseObjectClass(new Cursor(body, lineNumber), lenient: false));
+                    break;
+                case "ldapsyntax" or "ldapsyntaxes":
+                    syntaxes.Add(ParseSyntax(new Cursor(body, lineNumber), lenient: false));
                     break;
                 case "objectidentifier":
                     ParseOidMacro(body, lineNumber);
@@ -59,6 +66,38 @@ internal sealed class SchemaParser
         var result = ParseObjectClass(cursor, lenient);
         cursor.ExpectEnd();
         return result;
+    }
+
+    /// <summary>
+    /// Parses one bare parenthesized syntax definition, as a subschema subentry
+    /// publishes them in ldapSyntaxes values. Lenient mode skips unknown
+    /// keywords instead of failing the definition.
+    /// </summary>
+    public LdapSyntax ParseSyntaxDefinition(string definition, bool lenient)
+    {
+        var cursor = new Cursor(definition, lineNumber: 1, locateErrors: false);
+        var result = ParseSyntax(cursor, lenient);
+        cursor.ExpectEnd();
+        return result;
+    }
+
+    /// <summary>
+    /// Strips an RFC 4512 length bound from a syntax reference:
+    /// "1.3.6.1.4.1.1466.115.121.1.15{32768}" yields the bare OID and 32768.
+    /// The one implementation shared by the SYNTAX keyword parser and
+    /// <see cref="LdapSchema.FindSyntax"/>.
+    /// </summary>
+    public static string StripLengthBound(string syntax, out int? length)
+    {
+        length = null;
+        int brace = syntax.IndexOf('{', StringComparison.Ordinal);
+        if (brace >= 0 && syntax.EndsWith('}')
+            && int.TryParse(syntax[(brace + 1)..^1], NumberStyles.None, CultureInfo.InvariantCulture, out int bound))
+        {
+            length = bound;
+            return syntax[..brace];
+        }
+        return syntax;
     }
 
     /// <summary>
@@ -171,15 +210,8 @@ internal sealed class SchemaParser
                 case "ORDERING": result.Ordering = cursor.ReadValue(); break;
                 case "SUBSTR" or "SUBSTRINGS": result.Substring = cursor.ReadValue(); break;
                 case "SYNTAX":
-                    string syntax = cursor.ReadValue();
-                    int brace = syntax.IndexOf('{', StringComparison.Ordinal);
-                    if (brace >= 0 && syntax.EndsWith('}')
-                        && int.TryParse(syntax[(brace + 1)..^1], NumberStyles.None, CultureInfo.InvariantCulture, out int length))
-                    {
-                        result.SyntaxLength = length;
-                        syntax = syntax[..brace];
-                    }
-                    result.Syntax = syntax;
+                    result.Syntax = StripLengthBound(cursor.ReadValue(), out int? length);
+                    result.SyntaxLength = length;
                     break;
                 case "SINGLE-VALUE": result.SingleValue = true; break;
                 case "COLLECTIVE": result.Collective = true; break;
@@ -232,6 +264,41 @@ internal sealed class SchemaParser
                         cursor.SkipUnknownValue();
                     else
                         throw cursor.Error($"unexpected keyword '{token.Value}' in objectclass");
+                    break;
+            }
+        }
+
+        result.Extensions = extensions;
+        return result;
+    }
+
+    private LdapSyntax ParseSyntax(Cursor cursor, bool lenient)
+    {
+        cursor.Expect(TokenKind.LParen);
+        var result = new LdapSyntax { Oid = ResolveOid(cursor) };
+        var extensions = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+        while (true)
+        {
+            var token = cursor.Next();
+            if (token.Kind == TokenKind.RParen)
+                break;
+            if (token.Kind != TokenKind.Word)
+                throw cursor.Error($"unexpected token '{token.Value}' in ldapsyntax");
+
+            switch (token.Value.ToUpperInvariant())
+            {
+                // NAME is slapd's extension to the RFC 4512 grammar; its own
+                // pmi.schema uses it in ldapsyntax directives.
+                case "NAME": result.Names = cursor.ReadValueList(); break;
+                case "DESC": result.Description = cursor.ReadValue(); break;
+                default:
+                    if (token.Value.StartsWith("X-", StringComparison.OrdinalIgnoreCase))
+                        extensions[token.Value] = cursor.ReadValueList();
+                    else if (lenient)
+                        cursor.SkipUnknownValue();
+                    else
+                        throw cursor.Error($"unexpected keyword '{token.Value}' in ldapsyntax");
                     break;
             }
         }

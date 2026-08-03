@@ -12,7 +12,8 @@ public sealed class LdapAttributeType
     /// the form a subschema subentry publishes as attributeTypes values, e.g.
     /// "( 2.5.4.4 NAME ( 'sn' 'surname' ) SUP name )". Strict: an unknown keyword,
     /// a non-numeric OID, or trailing text throws <see cref="LdapSchemaParseException"/>;
-    /// for input a server published, use the lenient <see cref="LdapSchema.ParseSubschema"/>.
+    /// for input a server published, use the lenient
+    /// <see cref="LdapSchema.ParseSubschema(IEnumerable{string}, IEnumerable{string}, IEnumerable{string})"/>.
     /// </summary>
     public static LdapAttributeType Parse(string definition)
     {

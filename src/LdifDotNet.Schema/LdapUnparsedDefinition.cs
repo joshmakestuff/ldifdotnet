@@ -1,10 +1,12 @@
 namespace LdifDotNet.Schema;
 
 /// <summary>
-/// A definition value that <see cref="LdapSchema.ParseSubschema"/> could not
-/// parse, preserved raw so nothing is silently dropped. A live server's schema
-/// cannot be fixed by the consumer, so one malformed or vendor-specific
-/// definition degrades into this bucket instead of failing the whole schema.
+/// A definition value that
+/// <see cref="LdapSchema.ParseSubschema(IEnumerable{string}, IEnumerable{string}, IEnumerable{string})"/>
+/// could not parse, preserved raw so nothing is silently dropped. A live
+/// server's schema cannot be fixed by the consumer, so one malformed or
+/// vendor-specific definition degrades into this bucket instead of failing the
+/// whole schema.
 /// </summary>
 public sealed class LdapUnparsedDefinition
 {

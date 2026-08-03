@@ -557,16 +557,7 @@ public sealed partial class SchemaEntryGenerator
     private (bool Found, string? Syntax) ResolveSyntax(string attributeName)
     {
         var definition = _schema.FindAttributeType(attributeName);
-        bool found = definition is not null;
-        for (int depth = 0; definition is not null && depth < 20; depth++)
-        {
-            if (definition.Syntax is not null)
-                return (true, definition.Syntax);
-            definition = definition.SuperiorName is { } superior
-                ? _schema.FindAttributeType(superior)
-                : null;
-        }
-        return (found, null);
+        return (definition is not null, definition is null ? null : _schema.ResolveSyntaxOid(definition));
     }
 
     private LdifValue? SyntaxValue(string syntax, string parentDn)
