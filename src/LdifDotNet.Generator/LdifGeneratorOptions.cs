@@ -20,4 +20,13 @@ public sealed class LdifGeneratorOptions
 
     /// <summary>Number of group entries in <see cref="LdifGenerator.SampleDirectory"/>. Default 10.</summary>
     public int GroupCount { get; set; } = 10;
+
+    /// <summary>
+    /// Fraction of generated group members that reference a DN with no matching entry,
+    /// for exercising consumers that must tolerate dangling references (not every LDAP
+    /// deployment enforces referential integrity). 0 (default) keeps every member
+    /// referentially sound and leaves output byte-identical to a generator without this
+    /// option set; 1 makes every member dangle. Deterministic under <see cref="Seed"/>.
+    /// </summary>
+    public double DanglingMemberRatio { get; set; }
 }

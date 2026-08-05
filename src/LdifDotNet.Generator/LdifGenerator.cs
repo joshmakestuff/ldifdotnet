@@ -19,6 +19,8 @@ public sealed class LdifGenerator
     public LdifGenerator(LdifGeneratorOptions? options = null)
     {
         _options = options ?? new LdifGeneratorOptions();
+        if (_options.DanglingMemberRatio is < 0 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(options), "DanglingMemberRatio must be between 0 and 1.");
         _faker = FakerFactory.Create(_options.Locale, _options.Seed);
 
         // Parse the base DN once, honoring RFC 4514 escaping and multi-valued RDNs.
@@ -91,7 +93,8 @@ public sealed class LdifGenerator
     /// <summary>
     /// Generates a groupOfNames entry under <paramref name="parentDn"/> whose members
     /// are randomly chosen from <paramref name="memberPool"/> (at least one; groupOfNames
-    /// requires a member).
+    /// requires a member). A member may instead be a dangling DN per
+    /// <see cref="LdifGeneratorOptions.DanglingMemberRatio"/>.
     /// </summary>
     public LdifContentRecord Group(string parentDn, IReadOnlyList<LdifContentRecord> memberPool)
     {
@@ -102,14 +105,40 @@ public sealed class LdifGenerator
 
         string name = UniqueGroupName();
         int memberCount = _faker.Random.Int(1, Math.Min(memberPool.Count, 12));
-        var members = _faker.PickRandom(memberPool, memberCount);
+        var members = _faker.PickRandom(memberPool, memberCount).Select(m => m.Dn).ToList();
+
+        // Only draw when dangling is requested, so the default stays byte-identical
+        // to output generated before this option existed. Materialized eagerly: a
+        // deferred Select would move these draws relative to the rest of the stream.
+        if (_options.DanglingMemberRatio > 0)
+        {
+            for (int i = 0; i < members.Count; i++)
+            {
+                if (_faker.Random.Double() < _options.DanglingMemberRatio)
+                    members[i] = DanglingMemberDn(members[i]);
+            }
+        }
 
         return new LdifContentRecord(
             $"cn={Dn.EscapeValue(name)},{parentDn}",
             new LdifAttribute("objectClass", "top", "groupOfNames"),
             new LdifAttribute("cn", name),
             new LdifAttribute("description", _faker.Company.CatchPhrase()),
-            new LdifAttribute("member", members.Select(m => LdifValue.FromString(m.Dn))));
+            new LdifAttribute("member", members.Select(LdifValue.FromString)));
+    }
+
+    /// <summary>
+    /// A plausible sibling of <paramref name="peerDn"/> that no generated entry uses.
+    /// The uid is reserved in the same pool <see cref="Person"/> draws from, so a later
+    /// person can never accidentally make this reference resolve.
+    /// </summary>
+    private string DanglingMemberDn(string peerDn)
+    {
+        string uid = UniqueUid(_faker.Name.FirstName(), _faker.Name.LastName());
+        string parent = string.Join(',', Dn.Parse(peerDn).Skip(1).Select(rdn => rdn.ToString()));
+        return parent.Length > 0
+            ? $"uid={Dn.EscapeValue(uid)},{parent}"
+            : $"uid={Dn.EscapeValue(uid)}";
     }
 
     /// <summary>Generates <paramref name="count"/> group entries under <paramref name="parentDn"/>.</summary>
