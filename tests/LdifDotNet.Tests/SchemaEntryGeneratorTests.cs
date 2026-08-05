@@ -583,4 +583,21 @@ public class SchemaEntryGeneratorTests
         Assert.Equal(500, entries.Select(e => e.Dn).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
+    [Fact(Skip = "Known defect — see #65. Unskip with the system-schema syntax fallback.")]
+    public void Dn_valued_attributes_are_parseable_dns()
+    {
+        // member/owner declare SUP distinguishedName, whose definition lives in
+        // slapd's system schema and is commented out of core.schema. The SUP chain
+        // yields no syntax, so generation falls through to free text and emits
+        // values slapadd rejects.
+        var generator = new SchemaEntryGenerator(CoreSchemas(), new SchemaGeneratorOptions { Seed = 7, OptionalAttributeFill = 1.0 });
+
+        var entry = generator.Entry("groupOfNames", "ou=groups,dc=example,dc=com");
+
+        foreach (string attribute in (string[])["member", "owner"])
+        {
+            foreach (var value in entry[attribute]?.Values ?? [])
+                Assert.Null(Record.Exception(() => Dn.Parse(value.AsString())));
+        }
+    }
 }
