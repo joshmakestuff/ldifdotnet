@@ -72,6 +72,106 @@ public class GeneratorTests
     }
 
     [Fact]
+    public void Dangling_ratio_zero_leaves_the_seeded_stream_untouched()
+    {
+        // The dangling draw is skipped entirely at 0, so output matches a generator
+        // built before the option existed. Guards against a silent reroll for consumers
+        // pinning a seed.
+        var withoutOption = SmallOptions();
+        var explicitZero = SmallOptions();
+        explicitZero.DanglingMemberRatio = 0;
+
+        Assert.Equal(
+            LdifWriter.WriteToString(new LdifGenerator(withoutOption).SampleDirectory()),
+            LdifWriter.WriteToString(new LdifGenerator(explicitZero).SampleDirectory()));
+    }
+
+    [Fact]
+    public void Full_dangling_ratio_makes_every_member_unresolvable()
+    {
+        var options = SmallOptions();
+        options.DanglingMemberRatio = 1.0;
+        var records = new LdifGenerator(options).SampleDirectory();
+        var existingDns = records.Select(r => r.Dn).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var members = GroupMembers(records);
+
+        Assert.NotEmpty(members);
+        foreach (string member in members)
+        {
+            Assert.DoesNotContain(member, existingDns);
+            Assert.EndsWith("ou=people,dc=example,dc=com", member, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(Record.Exception(() => Dn.Parse(member)));   // dangling, but still a valid DN
+        }
+    }
+
+    [Fact]
+    public void Partial_dangling_ratio_mixes_resolvable_and_dangling_members()
+    {
+        var options = SmallOptions();
+        options.DanglingMemberRatio = 0.5;
+        options.GroupCount = 30;
+        var records = new LdifGenerator(options).SampleDirectory();
+        var existingDns = records.Select(r => r.Dn).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var members = GroupMembers(records);
+
+        Assert.Contains(members, m => existingDns.Contains(m));
+        Assert.Contains(members, m => !existingDns.Contains(m));
+    }
+
+    [Fact]
+    public void Dangling_dns_stay_dangling_when_more_people_are_generated_later()
+    {
+        // Dangling uids are reserved in the same pool Person draws from; a person
+        // generated afterwards must never make a dangling reference resolve.
+        var options = SmallOptions();
+        options.DanglingMemberRatio = 1.0;
+        var generator = new LdifGenerator(options);
+        const string PeopleDn = "ou=people,dc=example,dc=com";
+
+        var people = generator.People(20, PeopleDn);
+        var groups = generator.Groups(5, "ou=groups,dc=example,dc=com", people);
+        var latecomers = generator.People(200, PeopleDn);
+
+        var members = GroupMembers(groups).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.All(latecomers, p => Assert.DoesNotContain(p.Dn, members));
+    }
+
+    [Fact]
+    public void Dangling_ratio_is_deterministic_under_seed()
+    {
+        static LdifGeneratorOptions Options()
+        {
+            var options = SmallOptions();
+            options.DanglingMemberRatio = 0.4;
+            return options;
+        }
+
+        Assert.Equal(
+            LdifWriter.WriteToString(new LdifGenerator(Options()).SampleDirectory()),
+            LdifWriter.WriteToString(new LdifGenerator(Options()).SampleDirectory()));
+    }
+
+    [Theory]
+    [InlineData(-0.1)]
+    [InlineData(1.1)]
+    public void Dangling_ratio_outside_zero_to_one_throws(double ratio)
+    {
+        var options = SmallOptions();
+        options.DanglingMemberRatio = ratio;
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new LdifGenerator(options));
+        Assert.Contains("DanglingMemberRatio", ex.Message, StringComparison.Ordinal);
+    }
+
+    private static List<string> GroupMembers(IEnumerable<LdifContentRecord> records) =>
+        records
+            .Where(r => r["objectClass"]!.Values.Any(v => v.AsString() == "groupOfNames"))
+            .SelectMany(r => r["member"]!.Values.Select(v => v.AsString()))
+            .ToList();
+
+    [Fact]
     public void People_have_core_inetorgperson_attributes()
     {
         var person = new LdifGenerator(SmallOptions()).Person("ou=people,dc=example,dc=com");
