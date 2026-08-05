@@ -1,3 +1,12 @@
 * text=auto
+
+# Fixtures are the behavioral spec and are vendored verbatim; pin their line
+# endings so a CRLF checkout never masquerades as a local edit.
 *.ldif text eol=lf
-PublicApi.approved.txt text eol=lf
+*.schema text eol=lf
+
+# The approved API contracts are rewritten with LF by PublicApiTests
+# (File.WriteAllText of a "\n"-joined string). Without eol=lf they check out as
+# CRLF under core.autocrlf=true, so every re-approval on Windows leaves the
+# untouched contracts showing as modified with an empty diff.
+PublicApi*.approved.txt text eol=lf
