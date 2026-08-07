@@ -27,6 +27,44 @@ public sealed partial class SchemaEntryGenerator
     /// </summary>
     private const string SyntaxPrefix = "1.3.6.1.4.1.1466.115.121.1.";
 
+    /// <summary>
+    /// Syntaxes of the attribute types slapd hardcodes in its system schema, which
+    /// is why core.schema ships their definitions commented out (each block there is
+    /// the source for the entry below). A SUP chain that ends in one of these — most
+    /// commonly <c>SUP distinguishedName</c> or <c>SUP name</c> — resolves to no
+    /// syntax at all from the loaded files, and without this table DN-valued
+    /// attributes such as <c>member</c> would be filled with free text that a real
+    /// server rejects. Consulted only after the loaded schema yields nothing, so a
+    /// schema that does declare a syntax for these names still wins.
+    /// </summary>
+    private static readonly Dictionary<string, string> SystemSchemaSyntaxes =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["2.5.4.0"] = $"{SyntaxPrefix}38",      // objectClass — OID
+            ["objectClass"] = $"{SyntaxPrefix}38",
+            ["2.5.4.1"] = $"{SyntaxPrefix}12",      // aliasedObjectName — DN
+            ["aliasedObjectName"] = $"{SyntaxPrefix}12",
+            ["aliasedEntryName"] = $"{SyntaxPrefix}12",
+            ["2.5.4.3"] = $"{SyntaxPrefix}15",      // cn — SUP name, Directory String
+            ["cn"] = $"{SyntaxPrefix}15",
+            ["commonName"] = $"{SyntaxPrefix}15",
+            ["2.5.4.13"] = $"{SyntaxPrefix}15",     // description — Directory String
+            ["description"] = $"{SyntaxPrefix}15",
+            ["2.5.4.34"] = $"{SyntaxPrefix}12",     // seeAlso — SUP distinguishedName
+            ["seeAlso"] = $"{SyntaxPrefix}12",
+            ["2.5.4.35"] = $"{SyntaxPrefix}40",     // userPassword — Octet String
+            ["userPassword"] = $"{SyntaxPrefix}40",
+            ["2.5.4.41"] = $"{SyntaxPrefix}15",     // name — Directory String
+            ["name"] = $"{SyntaxPrefix}15",
+            ["2.5.4.49"] = $"{SyntaxPrefix}12",     // distinguishedName — DN
+            ["distinguishedName"] = $"{SyntaxPrefix}12",
+            ["1.3.6.1.4.1.250.1.57"] = $"{SyntaxPrefix}15", // labeledURI — Directory String
+            ["labeledURI"] = $"{SyntaxPrefix}15",
+            ["0.9.2342.19200300.100.1.1"] = $"{SyntaxPrefix}15", // uid — Directory String
+            ["uid"] = $"{SyntaxPrefix}15",
+            ["userid"] = $"{SyntaxPrefix}15",
+        };
+
     private readonly LdapSchema _schema;
     private readonly SchemaGeneratorOptions _options;
     private readonly Faker _faker;
@@ -553,12 +591,49 @@ public sealed partial class SchemaEntryGenerator
     private static bool IsPrintableChar(char c) =>
         char.IsAsciiLetterOrDigit(c) || c is '\'' or '(' or ')' or '+' or ',' or '-' or '.' or '/' or ':' or '?' or '=' or ' ';
 
-    /// <summary>Resolves an attribute's syntax OID, walking the SUP chain.</summary>
+    /// <summary>
+    /// Resolves an attribute's syntax OID, walking the SUP chain and falling back
+    /// to <see cref="SystemSchemaSyntaxes"/> when the chain runs into a definition
+    /// slapd hardcodes rather than loads.
+    /// </summary>
     private (bool Found, string? Syntax) ResolveSyntax(string attributeName)
     {
         var definition = _schema.FindAttributeType(attributeName);
-        return (definition is not null, definition is null ? null : _schema.ResolveSyntaxOid(definition));
+        if (definition is null)
+            return (false, SystemSchemaSyntax(attributeName));
+
+        return (true, _schema.ResolveSyntaxOid(definition) ?? SystemSchemaSyntaxFromChain(definition));
     }
+
+    /// <summary>
+    /// Walks the SUP chain of a definition that declares no syntax anywhere and
+    /// returns the first system-schema syntax that matches a link — including the
+    /// dangling superior name the chain terminates on (e.g. <c>member</c> SUP
+    /// <c>distinguishedName</c>, whose definition is commented out of core.schema).
+    /// </summary>
+    private string? SystemSchemaSyntaxFromChain(LdapAttributeType attributeType)
+    {
+        var visited = new HashSet<LdapAttributeType>();
+        for (var current = attributeType; current is not null && visited.Add(current);)
+        {
+            foreach (string name in current.Names)
+            {
+                if (SystemSchemaSyntax(name) is { } byName)
+                    return byName;
+            }
+            if (SystemSchemaSyntax(current.Oid) is { } byOid)
+                return byOid;
+
+            if (current.SuperiorName is not { } superior)
+                return null;
+            if (_schema.FindAttributeType(superior) is not { } next)
+                return SystemSchemaSyntax(superior); // chain ends outside the loaded schema
+            current = next;
+        }
+        return null;
+    }
+
+    private static string? SystemSchemaSyntax(string nameOrOid) => SystemSchemaSyntaxes.GetValueOrDefault(nameOrOid);
 
     private LdifValue? SyntaxValue(string syntax, string parentDn)
     {
