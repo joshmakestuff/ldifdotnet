@@ -85,8 +85,18 @@ public class DifferentialTests
             new("ou=people,dc=example,dc=com",
                 new LdifAttribute("objectClass", "top", "organizationalUnit"),
                 new LdifAttribute("ou", "people")),
+            new("ou=groups,dc=example,dc=com",
+                new LdifAttribute("objectClass", "top", "organizationalUnit"),
+                new LdifAttribute("ou", "groups")),
         };
         records.AddRange(generator.Entries("inetOrgPerson", 25, "ou=people,dc=example,dc=com"));
+
+        // groupOfNames is the #65 reproduction: member and owner reach their syntax
+        // only through slapd's system schema, and slapadd is the authority on whether
+        // the generated values are loadable DNs. inetOrgPerson alone does not cover
+        // it — its DN-valued attributes are either declared in cosine (manager,
+        // secretary) or optional and previously skipped (seeAlso).
+        records.AddRange(generator.Entries("groupOfNames", 5, "ou=groups,dc=example,dc=com"));
 
         AssertLoadsAndRoundTrips(records, schemaFiles);
     }

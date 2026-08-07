@@ -583,21 +583,77 @@ public class SchemaEntryGeneratorTests
         Assert.Equal(500, entries.Select(e => e.Dn).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
-    [Fact(Skip = "Known defect — see #65. Unskip with the system-schema syntax fallback.")]
+    [Fact]
     public void Dn_valued_attributes_are_parseable_dns()
     {
         // member/owner declare SUP distinguishedName, whose definition lives in
         // slapd's system schema and is commented out of core.schema. The SUP chain
-        // yields no syntax, so generation falls through to free text and emits
-        // values slapadd rejects.
+        // yields no syntax from the loaded files, so the system-schema fallback is
+        // what keeps these from being filled with free text slapadd rejects.
         var generator = new SchemaEntryGenerator(CoreSchemas(), new SchemaGeneratorOptions { Seed = 7, OptionalAttributeFill = 1.0 });
 
         var entry = generator.Entry("groupOfNames", "ou=groups,dc=example,dc=com");
 
         foreach (string attribute in (string[])["member", "owner"])
         {
-            foreach (var value in entry[attribute]?.Values ?? [])
+            var values = entry[attribute]?.Values;
+            Assert.NotNull(values);          // member is MUST, owner is MAY with fill 1.0
+            Assert.NotEmpty(values);
+            foreach (var value in values)
                 Assert.Null(Record.Exception(() => Dn.Parse(value.AsString())));
         }
+    }
+
+    [Fact]
+    public void Every_structural_class_emits_parseable_dns_for_dn_valued_attributes()
+    {
+        // Class-level sweep for #65: "DN-valued" is derived from the schema text
+        // (a SUP chain reaching 'distinguishedName'), not from the generator's own
+        // fallback table, so this fails if any such attribute regresses to free text.
+        var schema = CoreSchemas("schemas/contrib/eduperson.schema", "schemas/openldap/nis.schema");
+        var dnValued = schema.AttributeTypes
+            .Where(a => InheritsFrom(schema, a, "distinguishedName"))
+            .SelectMany(a => a.Names)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("member", dnValued, StringComparer.OrdinalIgnoreCase);
+
+        int checkedValues = 0;
+        foreach (var objectClass in schema.ObjectClasses.Where(c => c.Kind == LdapObjectClassKind.Structural))
+        {
+            var generator = new SchemaEntryGenerator(schema, new SchemaGeneratorOptions { Seed = 11, OptionalAttributeFill = 1.0 });
+            LdifContentRecord entry;
+            try
+            {
+                entry = generator.Entry(objectClass.Name, ParentDn);
+            }
+            catch (InvalidOperationException)
+            {
+                continue; // classes the generator cannot seed (no usable RDN attribute)
+            }
+
+            foreach (var attribute in entry.Attributes.Where(a => dnValued.Contains(a.Name)))
+            {
+                foreach (var value in attribute.Values)
+                {
+                    Assert.Null(Record.Exception(() => Dn.Parse(value.AsString())));
+                    checkedValues++;
+                }
+            }
+        }
+
+        Assert.NotEqual(0, checkedValues);
+    }
+
+    /// <summary>Whether the attribute's SUP chain reaches the named attribute type.</summary>
+    private static bool InheritsFrom(LdapSchema schema, LdapAttributeType attributeType, string superiorName)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var current = attributeType; current?.SuperiorName is { } superior && visited.Add(superior);)
+        {
+            if (string.Equals(superior, superiorName, StringComparison.OrdinalIgnoreCase))
+                return true;
+            current = schema.FindAttributeType(superior);
+        }
+        return false;
     }
 }
