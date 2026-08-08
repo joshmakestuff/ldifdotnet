@@ -17,6 +17,9 @@ namespace LdifDotNet.Generator;
 /// syntax), then the attribute's syntax OID. Required attributes whose syntax has
 /// no supported generator fall back to free text, which a server may reject;
 /// supply an <see cref="SchemaGeneratorOptions.ExampleValues"/> pool for those.
+/// Distinguished Name is the one syntax that can yield several values per
+/// attribute and has its own source order — see
+/// <see cref="SchemaGeneratorOptions.DnPool"/>.
 /// </summary>
 public sealed partial class SchemaEntryGenerator
 {
@@ -77,8 +80,20 @@ public sealed partial class SchemaEntryGenerator
     /// </summary>
     private readonly Dictionary<string, string> _formatters;
 
+    /// <summary>Validated snapshot of <see cref="SchemaGeneratorOptions.DnPool"/>.</summary>
+    private readonly Dictionary<string, IReadOnlyList<string>> _dnPool;
+
     private readonly Dictionary<string, HashSet<string>> _usedRdnValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _nextRdnSuffix = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Every DN this generator has minted, in order. Backs DN-valued attributes
+    /// when no <see cref="SchemaGeneratorOptions.DnPool"/> covers them: a run that
+    /// generates people before groups then produces groups whose members are real
+    /// people, without the caller wiring a pool. Deliberately not scoped per
+    /// parent — peers under one parent are the least useful thing to point at.
+    /// </summary>
+    private readonly List<string> _mintedDns = [];
 
     /// <summary>Creates a generator for the given schema; null options use the defaults.</summary>
     public SchemaEntryGenerator(LdapSchema schema, SchemaGeneratorOptions? options = null)
@@ -87,8 +102,48 @@ public sealed partial class SchemaEntryGenerator
         _options = options ?? new SchemaGeneratorOptions();
         if (_options.OptionalAttributeFill is < 0 or > 1)
             throw new ArgumentOutOfRangeException(nameof(options), "OptionalAttributeFill must be between 0 and 1.");
+        if (_options.DanglingMemberRatio is < 0 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(options), "DanglingMemberRatio must be between 0 and 1.");
+        if (_options.MaxDnValues < 1)
+            throw new ArgumentOutOfRangeException(nameof(options), "MaxDnValues must be at least 1.");
         _faker = FakerFactory.Create(_options.Locale, _options.Seed);
         _formatters = ValidateFormatters(_schema, _options);
+        _dnPool = ValidateDnPool(_options);
+    }
+
+    /// <summary>
+    /// Snapshots and validates <see cref="SchemaGeneratorOptions.DnPool"/>. A pool
+    /// value that is not a parseable DN would produce output slapd rejects, which
+    /// is the whole failure this option exists to prevent — so it fails at
+    /// construction rather than at the draw that happens to pick it. Snapshotting
+    /// matches <see cref="_formatters"/>: post-construction mutation cannot smuggle
+    /// in an unvalidated value.
+    /// </summary>
+    private static Dictionary<string, IReadOnlyList<string>> ValidateDnPool(SchemaGeneratorOptions options)
+    {
+        var snapshot = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (attribute, pool) in options.DnPool)
+        {
+            if (pool is null)
+                throw new ArgumentException($"DnPool for attribute '{attribute}' is null.", nameof(options));
+
+            var values = pool.ToList();
+            foreach (string dn in values)
+            {
+                try
+                {
+                    Dn.Parse(dn);
+                }
+                catch (ArgumentException ex)
+                {
+                    throw new ArgumentException(
+                        $"DnPool for attribute '{attribute}' contains '{dn}', which is not a valid RFC 4514 DN ({ex.Message}).",
+                        nameof(options), ex);
+                }
+            }
+            snapshot[attribute] = values;
+        }
+        return snapshot;
     }
 
     /// <summary>
@@ -314,6 +369,8 @@ public sealed partial class SchemaEntryGenerator
             : PickRdnAttribute(required, optional);
         string rdnValue = UniqueRdnValue(rdnAttribute, parentDn);
 
+        string dn = $"{rdnAttribute}={Dn.EscapeValue(rdnValue)},{parentDn}";
+
         var attributes = new List<LdifAttribute>
         {
             new("objectClass", objectClassValues.Select(LdifValue.FromString)),
@@ -324,18 +381,22 @@ public sealed partial class SchemaEntryGenerator
         {
             if (IsHandled(name, rdnAttribute))
                 continue;
-            if (GenerateValue(name, parentDn, required: true) is { } value)
-                attributes.Add(new LdifAttribute(name, value));
+            var values = GenerateValues(name, parentDn, dn, required: true);
+            if (values.Count > 0)
+                attributes.Add(new LdifAttribute(name, values));
         }
         foreach (string name in optional)
         {
             if (IsHandled(name, rdnAttribute) || _faker.Random.Double() >= _options.OptionalAttributeFill)
                 continue;
-            if (GenerateValue(name, parentDn, required: false) is { } value)
-                attributes.Add(new LdifAttribute(name, value));
+            var values = GenerateValues(name, parentDn, dn, required: false);
+            if (values.Count > 0)
+                attributes.Add(new LdifAttribute(name, values));
         }
 
-        return new LdifContentRecord($"{rdnAttribute}={Dn.EscapeValue(rdnValue)},{parentDn}", attributes);
+        // Registered after generation, so an entry never references itself.
+        _mintedDns.Add(dn);
+        return new LdifContentRecord(dn, attributes);
 
         static bool IsHandled(string name, string rdnAttribute) =>
             name.Equals("objectClass", StringComparison.OrdinalIgnoreCase)
@@ -493,6 +554,104 @@ public sealed partial class SchemaEntryGenerator
             }
             return generated;
         }
+    }
+
+    /// <summary>Syntax OID for Distinguished Name.</summary>
+    private const string DnSyntax = SyntaxPrefix + "12";
+
+    /// <summary>
+    /// All values for one attribute of an entry. Only DN-syntax attributes ever
+    /// yield more than one; everything else defers to <see cref="GenerateValue"/>
+    /// unchanged. An empty result means the attribute is skipped.
+    /// </summary>
+    private List<LdifValue> GenerateValues(string attributeName, string parentDn, string selfDn, bool required)
+    {
+        // A formatter or example pool overrides built-in generation outright — the
+        // first two arms of GenerateValue. Mirrored here so an author who keys
+        // either at a DN attribute keeps the single value they asked for.
+        bool explicitSource = _formatters.ContainsKey(attributeName)
+            || (_options.ExampleValues.TryGetValue(attributeName, out var pool) && pool.Count > 0);
+
+        if (!explicitSource && ResolveSyntax(attributeName).Syntax == DnSyntax)
+            return DnValues(attributeName, parentDn, selfDn);
+
+        return GenerateValue(attributeName, parentDn, required) is { } value ? [value] : [];
+    }
+
+    /// <summary>
+    /// Values for a DN-syntax attribute, drawn from (in order) the attribute's
+    /// <see cref="SchemaGeneratorOptions.DnPool"/>, then the DNs already minted by
+    /// this generator, then the parent DN — the last being the only source that
+    /// exists for the very first entry of a run, and the behaviour every DN
+    /// attribute had before ldifdotnet#68.
+    /// </summary>
+    private List<LdifValue> DnValues(string attributeName, string parentDn, string selfDn)
+    {
+        var source = _dnPool.TryGetValue(attributeName, out var configured) && configured.Count > 0
+            ? configured
+            : _mintedDns;
+
+        // Self-reference is valid LDAP but describes nothing; exclude it rather
+        // than trade one meaningless value for another. Only a caller-supplied pool
+        // can contain it — minted DNs are registered after the entry is built.
+        var candidates = source.Where(dn => !dn.Equals(selfDn, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (candidates.Count == 0)
+            return [LdifValue.FromString(parentDn)];
+
+        int max = IsSingleValued(attributeName) ? 1 : Math.Min(_options.MaxDnValues, candidates.Count);
+        int count = max <= 1 ? 1 : _faker.Random.Int(1, max);
+        var values = _faker.PickRandom(candidates, count).ToList();
+
+        // Only draw when dangling is requested, so output with the option unset is
+        // unaffected by its existence. Materialized eagerly: a deferred Select
+        // would move these draws relative to the rest of the stream.
+        if (_options.DanglingMemberRatio > 0)
+        {
+            for (int i = 0; i < values.Count; i++)
+            {
+                if (_faker.Random.Double() < _options.DanglingMemberRatio)
+                    values[i] = DanglingDn(values[i]);
+            }
+        }
+
+        return values.Select(LdifValue.FromString).ToList();
+    }
+
+    /// <summary>
+    /// A plausible sibling of <paramref name="peerDn"/> that no generated entry
+    /// uses. The RDN value is reserved in the same pool <see cref="UniqueRdnValue"/>
+    /// draws from, so a later entry can never make this reference resolve.
+    /// </summary>
+    private string DanglingDn(string peerDn)
+    {
+        var rdns = Dn.Parse(peerDn);
+        // Attributes[0] rather than Type: Type is defined only for a single-valued RDN.
+        string type = rdns[0].Attributes[0].Type;
+        string parent = string.Join(',', rdns.Skip(1).Select(rdn => rdn.ToString()));
+
+        string value = UniqueRdnValue(type, parent);
+        string rdn = $"{type}={Dn.EscapeValue(value)}";
+        return parent.Length > 0 ? $"{rdn},{parent}" : rdn;
+    }
+
+    /// <summary>
+    /// Whether the schema constrains an attribute to one value, honouring a
+    /// <c>SINGLE-VALUE</c> anywhere in the SUP chain. Unresolvable names are
+    /// treated as multi-valued — the schema is what a real server enforces, and
+    /// nothing here can be stricter than it.
+    /// </summary>
+    private bool IsSingleValued(string attributeName)
+    {
+        var visited = new HashSet<LdapAttributeType>();
+        for (var current = _schema.FindAttributeType(attributeName); current is not null && visited.Add(current);)
+        {
+            if (current.SingleValue)
+                return true;
+            if (current.SuperiorName is not { } superior)
+                return false;
+            current = _schema.FindAttributeType(superior);
+        }
+        return false;
     }
 
     private LdifValue? GenerateValue(string attributeName, string parentDn, bool required)
@@ -705,6 +864,37 @@ public sealed class SchemaGeneratorOptions
     /// </summary>
     public IDictionary<string, IReadOnlyList<string>> ExampleValues { get; } =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Per-attribute DN pools for attributes whose syntax is Distinguished Name
+    /// (case-insensitive names), e.g. <c>DnPool["member"] = peopleDns</c>. Values
+    /// must parse as RFC 4514 DNs; an unparseable one fails generator
+    /// construction. Consulted after <see cref="Formatters"/> and
+    /// <see cref="ExampleValues"/> — unlike those, a pool here can supply several
+    /// values to one multi-valued attribute (see <see cref="MaxDnValues"/>).
+    /// An attribute with no pool draws from the DNs this generator has already
+    /// minted, falling back to the parent DN only while nothing has been minted.
+    /// </summary>
+    public IDictionary<string, IReadOnlyList<string>> DnPool { get; } =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Upper bound on how many values a multi-valued DN-syntax attribute receives;
+    /// the actual count is drawn from 1..min(this, pool size). Default 4. An
+    /// attribute the schema marks <c>SINGLE-VALUE</c> (anywhere in its SUP chain)
+    /// always gets exactly one value regardless. Set to 1 to make every DN
+    /// attribute single-valued.
+    /// </summary>
+    public int MaxDnValues { get; set; } = 4;
+
+    /// <summary>
+    /// Fraction (0..1) of generated DN values replaced by a plausible sibling DN
+    /// that no generated entry uses — for exercising a consumer's
+    /// referential-integrity handling. Default 0 (every DN value resolves, as far
+    /// as the pool it was drawn from resolves). Mirrors
+    /// <see cref="LdifGeneratorOptions.DanglingMemberRatio"/>.
+    /// </summary>
+    public double DanglingMemberRatio { get; set; }
 
     /// <summary>
     /// Per-attribute value format templates (case-insensitive names), e.g.

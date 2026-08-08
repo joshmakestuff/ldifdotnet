@@ -604,6 +604,219 @@ public class SchemaEntryGeneratorTests
         }
     }
 
+    private const string GroupsDn = "ou=groups,dc=example,dc=com";
+
+    private static List<string> PeopleDns(int count) =>
+        Enumerable.Range(1, count).Select(i => $"uid=person{i},{ParentDn}").ToList();
+
+    [Fact]
+    public void Dn_pool_supplies_real_membership()
+    {
+        // #68: a DN that parses is not enough — 'member' pointing at its own
+        // container describes no membership, so a consumer's group traversal has
+        // nothing to traverse. Every value must be a DN the caller actually owns.
+        var pool = PeopleDns(20);
+        var options = new SchemaGeneratorOptions { Seed = 7, OptionalAttributeFill = 0 };
+        options.DnPool["member"] = pool;
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var groups = generator.Entries("groupOfNames", 10, GroupsDn);
+
+        var allMembers = groups.SelectMany(g => g["member"]!.Values.Select(v => v.AsString())).ToList();
+        Assert.NotEmpty(allMembers);
+        Assert.All(allMembers, m => Assert.Contains(m, pool, StringComparer.OrdinalIgnoreCase));
+        Assert.DoesNotContain(GroupsDn, allMembers, StringComparer.OrdinalIgnoreCase);
+        // Multi-valued: a one-member group cannot exercise traversal.
+        Assert.Contains(groups, g => g["member"]!.Values.Count > 1);
+    }
+
+    [Fact]
+    public void Dn_attributes_draw_from_previously_minted_entries()
+    {
+        // No pool configured: entries the generator already minted are a better
+        // referent than the parent DN, so a people-then-groups run gets real
+        // membership without the caller wiring anything.
+        var generator = new SchemaEntryGenerator(
+            CoreSchemas(), new SchemaGeneratorOptions { Seed = 7, OptionalAttributeFill = 0 });
+
+        var people = generator.Entries("inetOrgPerson", 12, ParentDn);
+        var group = generator.Entry("groupOfNames", GroupsDn);
+
+        var peopleDns = people.Select(p => p.Dn).ToList();
+        var members = group["member"]!.Values.Select(v => v.AsString()).ToList();
+        Assert.NotEmpty(members);
+        Assert.All(members, m => Assert.Contains(m, peopleDns, StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void First_entry_of_a_run_falls_back_to_the_parent_dn()
+    {
+        // Nothing minted and no pool: the parent DN is the only DN in existence.
+        // Documents the one case where the pre-#68 behaviour survives.
+        var generator = new SchemaEntryGenerator(
+            CoreSchemas(), new SchemaGeneratorOptions { Seed = 7, OptionalAttributeFill = 0 });
+
+        var group = generator.Entry("groupOfNames", GroupsDn);
+
+        Assert.Equal([GroupsDn], group["member"]!.Values.Select(v => v.AsString()));
+    }
+
+    [Fact]
+    public void Entry_never_references_itself()
+    {
+        // Only a caller-supplied pool can contain the entry being built: minted DNs
+        // are registered after generation. A pinned RDN makes the DNs predictable,
+        // so the pool below really does hold every entry's own DN — without that,
+        // this test would pass whether or not the exclusion exists.
+        var options = new SchemaGeneratorOptions { Seed = 7, OptionalAttributeFill = 0, RdnAttribute = "cn" };
+        options.Formatters["cn"] = "Fixed Name";
+        var ownDns = new List<string> { $"cn=Fixed Name,{GroupsDn}" };
+        for (int i = 2; i <= 8; i++)
+            ownDns.Add($"cn=Fixed Name-{i},{GroupsDn}");
+        options.DnPool["member"] = ownDns;
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var groups = generator.Entries("groupOfNames", 8, GroupsDn);
+
+        // Guards the premise: if the RDN suffixing ever changes, the pool stops
+        // holding the entries' own DNs and the assertion below goes vacuous.
+        Assert.Equal(ownDns, groups.Select(g => g.Dn));
+        foreach (var group in groups)
+        {
+            Assert.DoesNotContain(
+                group.Dn, group["member"]!.Values.Select(v => v.AsString()), StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void Single_valued_dn_attributes_get_exactly_one_value()
+    {
+        // SINGLE-VALUE is what a real server enforces; MaxDnValues must not push
+        // past it. (core.schema cannot witness this: its SINGLE-VALUE DN attributes
+        // live in slapd's system schema and are commented out, so no flag is parsed.)
+        var schema = LdapSchema.Parse(
+            "attributetype ( 1.2.3.7.1 NAME 'cn' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )\n" +
+            "attributetype ( 1.2.3.7.2 NAME 'primaryOwner' SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )\n" +
+            "attributetype ( 1.2.3.7.3 NAME 'coOwner' SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )\n" +
+            "objectclass ( 1.2.3.7.9 NAME 'ownedThing' STRUCTURAL MUST ( cn $ primaryOwner $ coOwner ) )\n");
+        var options = new SchemaGeneratorOptions { Seed = 5, OptionalAttributeFill = 0 };
+        options.DnPool["primaryOwner"] = PeopleDns(10);
+        options.DnPool["coOwner"] = PeopleDns(10);
+        var generator = new SchemaEntryGenerator(schema, options);
+
+        var entries = generator.Entries("ownedThing", 15, GroupsDn);
+
+        Assert.All(entries, e => Assert.Single(e["primaryOwner"]!.Values));
+        Assert.Contains(entries, e => e["coOwner"]!.Values.Count > 1);
+    }
+
+    [Fact]
+    public void MaxDnValues_of_one_makes_every_dn_attribute_single_valued()
+    {
+        var options = new SchemaGeneratorOptions { Seed = 7, OptionalAttributeFill = 0, MaxDnValues = 1 };
+        options.DnPool["member"] = PeopleDns(20);
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var groups = generator.Entries("groupOfNames", 10, GroupsDn);
+
+        Assert.All(groups, g => Assert.Single(g["member"]!.Values));
+    }
+
+    [Fact]
+    public void Dangling_ratio_emits_dns_that_resolve_to_nothing()
+    {
+        // Referential-integrity testing needs references that are well-formed and
+        // deliberately unresolvable — the schema-driven mirror of #66.
+        var pool = PeopleDns(20);
+        var options = new SchemaGeneratorOptions
+        {
+            Seed = 7,
+            OptionalAttributeFill = 0,
+            DanglingMemberRatio = 1.0,
+        };
+        options.DnPool["member"] = pool;
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var groups = generator.Entries("groupOfNames", 10, GroupsDn);
+
+        var members = groups.SelectMany(g => g["member"]!.Values.Select(v => v.AsString())).ToList();
+        Assert.NotEmpty(members);
+        Assert.All(members, m =>
+        {
+            Assert.Null(Record.Exception(() => Dn.Parse(m)));         // still loadable
+            Assert.DoesNotContain(m, pool, StringComparer.OrdinalIgnoreCase);
+            Assert.EndsWith(ParentDn, m, StringComparison.Ordinal);   // a plausible sibling, not a random string
+        });
+    }
+
+    [Fact]
+    public void Dangling_dns_are_never_made_to_resolve_by_a_later_entry()
+    {
+        // The dangling RDN value is reserved in the pool real entries draw from, so
+        // a run cannot accidentally mint the entry a dangling reference points at.
+        var options = new SchemaGeneratorOptions
+        {
+            Seed = 9,
+            OptionalAttributeFill = 0,
+            DanglingMemberRatio = 1.0,
+        };
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var people = generator.Entries("inetOrgPerson", 15, ParentDn);
+        var groups = generator.Entries("groupOfNames", 15, GroupsDn);
+        var morePeople = generator.Entries("inetOrgPerson", 30, ParentDn);
+
+        var minted = people.Concat(morePeople).Select(p => p.Dn).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var members = groups.SelectMany(g => g["member"]!.Values.Select(v => v.AsString())).ToList();
+        Assert.NotEmpty(members);
+        Assert.All(members, m => Assert.DoesNotContain(m, minted, StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Dn_pool_rejects_values_that_are_not_dns()
+    {
+        // Fails at construction, not at the draw that happens to pick it — an
+        // unparseable pool value is exactly the slapd rejection this option prevents.
+        var options = new SchemaGeneratorOptions { Seed = 7 };
+        options.DnPool["member"] = ["uid=ok,ou=people,dc=example,dc=com", "not a dn"];
+
+        var ex = Assert.Throws<ArgumentException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+        Assert.Contains("not a dn", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("member", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(-0.1)]
+    [InlineData(1.1)]
+    public void DanglingMemberRatio_must_be_a_fraction(double ratio)
+    {
+        var options = new SchemaGeneratorOptions { DanglingMemberRatio = ratio };
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+    }
+
+    [Fact]
+    public void MaxDnValues_must_be_at_least_one()
+    {
+        var options = new SchemaGeneratorOptions { MaxDnValues = 0 };
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SchemaEntryGenerator(CoreSchemas(), options));
+    }
+
+    [Fact]
+    public void Formatters_and_example_values_still_own_dn_attributes()
+    {
+        // Precedence is unchanged: an author who keys either at a DN attribute gets
+        // exactly what they asked for, single-valued, pool or no pool.
+        var options = new SchemaGeneratorOptions { Seed = 7, OptionalAttributeFill = 0 };
+        options.DnPool["member"] = PeopleDns(20);
+        options.Formatters["member"] = "uid=fixed,ou=people,dc=example,dc=com";
+        var generator = new SchemaEntryGenerator(CoreSchemas(), options);
+
+        var groups = generator.Entries("groupOfNames", 5, GroupsDn);
+
+        Assert.All(groups, g =>
+            Assert.Equal(["uid=fixed,ou=people,dc=example,dc=com"], g["member"]!.Values.Select(v => v.AsString())));
+    }
+
     [Fact]
     public void Every_structural_class_emits_parseable_dns_for_dn_valued_attributes()
     {
