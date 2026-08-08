@@ -29,9 +29,12 @@ namespace LdifDotNet.Generator
     {
         public SchemaGeneratorOptions() { }
         public System.Collections.Generic.IList<string> AuxiliaryClasses { get; }
+        public double DanglingMemberRatio { get; set; }
+        public System.Collections.Generic.IDictionary<string, System.Collections.Generic.IReadOnlyList<string>> DnPool { get; }
         public System.Collections.Generic.IDictionary<string, System.Collections.Generic.IReadOnlyList<string>> ExampleValues { get; }
         public System.Collections.Generic.IDictionary<string, string> Formatters { get; }
         public string Locale { get; set; }
+        public int MaxDnValues { get; set; }
         public double OptionalAttributeFill { get; set; }
         public string? RdnAttribute { get; set; }
         public int? Seed { get; set; }
