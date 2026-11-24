@@ -69,9 +69,9 @@ public static class Dn
             {
                 result.Append(RfcGrammar.StrictUtf8.GetString(hexRun.ToArray()));
             }
-            catch (DecoderFallbackException)
+            catch (DecoderFallbackException ex)
             {
-                throw new ArgumentException("DN value has a hex escape run that is not valid UTF-8.", nameof(value));
+                throw new ArgumentException("DN value has a hex escape run that is not valid UTF-8.", nameof(value), ex);
             }
             hexRun.Clear();
         }
